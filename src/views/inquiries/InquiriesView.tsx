@@ -1,9 +1,9 @@
 'use client'
 /**
  * KN541 SCM 문의 관리
- * GET /scm/inquiries  — 목록
- * POST /scm/inquiries — 새 문의 등록
- * POST /scm/inquiries/:id/reply — 관리자 답변 확인 (읽기전용)
+ * GET  /scm/inquiries       — 목록
+ * POST /scm/inquiries       — 문의 등록
+ * GET  /scm/inquiries/:id   — 상세 (답변 확인)
  */
 import { useState, useEffect, useCallback } from 'react'
 import Box from '@mui/material/Box'
@@ -14,88 +14,108 @@ import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
+import Snackbar from '@mui/material/Snackbar'
 import TablePagination from '@mui/material/TablePagination'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
-import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
-import Tabs from '@mui/material/Tabs'
-import Tab from '@mui/material/Tab'
-import Snackbar from '@mui/material/Snackbar'
-import AlertMui from '@mui/material/Alert'
 import Divider from '@mui/material/Divider'
-import Paper from '@mui/material/Paper'
+import CustomTextField from '@core/components/mui/TextField'
+import tableStyles from '@core/styles/table.module.css'
 import { scmGet, scmPost, fmtDate } from '@/lib/scmApi'
 
 interface Inquiry {
-  inquiry_id: string
-  category: string
-  title: string
-  content: string
-  status: string     // PENDING | ANSWERED | CLOSED
-  created_at: string
-  replied_at: string | null
-  reply_content: string | null
+  inquiry_id:    string
+  title:         string
+  category:      string | null
+  status:        string
+  has_answer:    boolean
+  created_at:    string
+  answered_at:   string | null
 }
 
-const STATUS_MAP: Record<string, { label: string; color: 'default'|'warning'|'success'|'secondary' }> = {
-  PENDING:  { label: '답변대기', color: 'warning'   },
-  ANSWERED: { label: '답변완료', color: 'success'   },
-  CLOSED:   { label: '종료',    color: 'secondary'  },
+interface InquiryDetail extends Inquiry {
+  content:        string
+  answer_content: string | null
+  answered_by:    string | null
 }
 
-const CATEGORY_OPTIONS = ['상품문의', '정산문의', '배송문의', '기타']
+const INQUIRY_STATUS_MAP: Record<string, { label: string; color: 'default'|'warning'|'success' }> = {
+  PENDING:   { label: '답변대기', color: 'warning' },
+  ANSWERED:  { label: '답변완료', color: 'success' },
+  CLOSED:    { label: '종료',     color: 'default' },
+}
+
+const CATEGORY_OPTIONS = [
+  { value: 'PRODUCT',    label: '상품 문의' },
+  { value: 'ORDER',      label: '주문/배송' },
+  { value: 'SETTLEMENT', label: '정산 문의' },
+  { value: 'ETC',        label: '기타'      },
+]
 
 export default function InquiriesView() {
   const [rows,    setRows]    = useState<Inquiry[]>([])
   const [total,   setTotal]   = useState(0)
   const [page,    setPage]    = useState(0)
-  const [tab,     setTab]     = useState('')
+  const [status,  setStatus]  = useState('')
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
-  const [snack,   setSnack]   = useState({ open: false, msg: '', sev: 'success' as 'success'|'error' })
+
+  // 등록 다이얼로그
+  const [writeOpen, setWriteOpen] = useState(false)
+  const [writeForm, setWriteForm] = useState({ title: '', category: 'PRODUCT', content: '' })
+  const [writing,   setWriting]   = useState(false)
+
+  // 상세 다이얼로그
+  const [detail,       setDetail]       = useState<InquiryDetail | null>(null)
+  const [detailOpen,   setDetailOpen]   = useState(false)
+  const [detailLoading,setDetailLoading]= useState(false)
+
+  const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' as 'success'|'error' })
   const toast = (msg: string, sev: 'success'|'error' = 'success') => setSnack({ open: true, msg, sev })
 
-  // 문의 상세
-  const [detail, setDetail] = useState<Inquiry | null>(null)
-
-  // 문의 등록 다이얼로그
-  const [newDialog, setNewDialog] = useState(false)
-  const [newForm, setNewForm] = useState({ category: '상품문의', title: '', content: '' })
-  const [submitting, setSubmitting] = useState(false)
-
-  const load = useCallback(async (pg = 0, status = tab) => {
+  const load = useCallback(async (pg = 0, s = status) => {
     setLoading(true); setError('')
     try {
       const qs = new URLSearchParams({ page: String(pg + 1), size: '20' })
-      if (status) qs.set('status', status)
+      if (s) qs.set('status', s)
       const data = await scmGet<{ items: Inquiry[]; total: number }>(`/scm/inquiries?${qs}`)
       setRows(data.items ?? []); setTotal(data.total ?? 0)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : '데이터를 불러올 수 없습니다.')
     } finally { setLoading(false) }
-  }, [tab])
+  }, [status])
 
   useEffect(() => { void load(0) }, [load])
 
-  const handleTabChange = (v: string) => { setTab(v); setPage(0); void load(0, v) }
-
-  const handleSubmitInquiry = async () => {
-    if (!newForm.title.trim() || !newForm.content.trim()) {
-      toast('제목과 내용을 입력하세요.', 'error'); return
-    }
-    setSubmitting(true)
+  const openDetail = async (id: string) => {
+    setDetailOpen(true); setDetail(null); setDetailLoading(true)
     try {
-      await scmPost('/scm/inquiries', newForm)
+      const data = await scmGet<InquiryDetail>(`/scm/inquiries/${id}`)
+      setDetail(data)
+    } catch { setDetail(null) }
+    finally { setDetailLoading(false) }
+  }
+
+  const handleWrite = async () => {
+    if (!writeForm.title.trim())   { toast('제목을 입력하세요.', 'error'); return }
+    if (!writeForm.content.trim()) { toast('내용을 입력하세요.', 'error'); return }
+    setWriting(true)
+    try {
+      await scmPost('/scm/inquiries', {
+        title:    writeForm.title.trim(),
+        category: writeForm.category,
+        content:  writeForm.content.trim(),
+      })
       toast('문의가 등록됐습니다.')
-      setNewDialog(false)
-      setNewForm({ category: '상품문의', title: '', content: '' })
-      void load(0, tab)
+      setWriteOpen(false)
+      setWriteForm({ title: '', category: 'PRODUCT', content: '' })
+      void load(0)
     } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : '등록 실패', 'error')
-    } finally { setSubmitting(false) }
+      toast(e instanceof Error ? e.message : '문의 등록 실패', 'error')
+    } finally { setWriting(false) }
   }
 
   return (
@@ -103,66 +123,92 @@ export default function InquiriesView() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant='h5' fontWeight={700}>문의 관리</Typography>
         <Button variant='contained' startIcon={<i className='tabler-plus' />}
-          onClick={() => setNewDialog(true)}>문의 등록</Button>
+          onClick={() => setWriteOpen(true)}>
+          문의 등록
+        </Button>
       </Box>
 
       <Card>
-        <CardHeader title='문의 목록'
-          action={!loading && (
-            <Chip label={`총 ${total.toLocaleString()}건`} size='small' color='primary' variant='outlined' sx={{ fontWeight: 600 }} />
-          )}
+        <CardHeader
+          title='문의 목록'
+          action={
+            loading
+              ? <CircularProgress size={16} />
+              : <Chip label={`총 ${total.toLocaleString()}건`} size='small' color='primary' variant='outlined' sx={{ fontWeight: 600 }} />
+          }
         />
 
-        {/* 상태 탭 */}
-        <Box sx={{ px: 3, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Tabs value={tab} onChange={(_, v) => handleTabChange(v)} variant='scrollable'>
-            <Tab value='' label='전체' />
-            <Tab value='PENDING'  label='답변대기' />
-            <Tab value='ANSWERED' label='답변완료' />
-            <Tab value='CLOSED'   label='종료' />
-          </Tabs>
+        {/* 필터 */}
+        <Box sx={{ px: 3, py: 2, display: 'flex', gap: 1, alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
+          <CustomTextField select size='small' label='상태' value={status}
+            onChange={e => { setStatus(e.target.value); setPage(0); void load(0, e.target.value) }}
+            sx={{ minWidth: 130 }}>
+            <MenuItem value=''>전체</MenuItem>
+            {Object.entries(INQUIRY_STATUS_MAP).map(([v, m]) => (
+              <MenuItem key={v} value={v}>{m.label}</MenuItem>
+            ))}
+          </CustomTextField>
         </Box>
 
         {error && <Alert severity='error' sx={{ mx: 3, my: 2 }}>{error}</Alert>}
 
         <div className='overflow-x-auto'>
           {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress size={32} /></Box>
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+              <CircularProgress size={32} />
+            </Box>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <table className={tableStyles.table}>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--mui-palette-divider)' }}>
-                  {['No', '분류', '제목', '상태', '등록일', '답변일'].map(h => (
-                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600,
-                      color: 'var(--mui-palette-text-secondary)', fontSize: 12 }}>{h}</th>
-                  ))}
+                <tr>
+                  <th>No</th>
+                  <th>제목</th>
+                  <th>카테고리</th>
+                  <th>상태</th>
+                  <th>등록일</th>
+                  <th>답변일</th>
+                  <th>상세</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px 0' }}>
-                    <Typography color='text.secondary'>문의가 없습니다.</Typography>
-                  </td></tr>
-                ) : rows.map((inq, idx) => {
-                  const sm = STATUS_MAP[inq.status] ?? { label: inq.status, color: 'default' as const }
+                  <tr>
+                    <td colSpan={7} className='text-center py-10'>
+                      <Typography color='text.secondary'>문의 내역이 없습니다.</Typography>
+                    </td>
+                  </tr>
+                ) : rows.map((q, idx) => {
+                  const sm = INQUIRY_STATUS_MAP[q.status] ?? { label: q.status, color: 'default' as const }
                   return (
-                    <tr key={inq.inquiry_id}
-                      style={{ borderBottom: '1px solid var(--mui-palette-divider)', cursor: 'pointer' }}
-                      onClick={() => setDetail(inq)}>
-                      <td style={{ padding: '10px 12px' }}><Typography variant='body2'>{page * 20 + idx + 1}</Typography></td>
-                      <td style={{ padding: '10px 12px' }}><Chip label={inq.category} size='small' variant='outlined' /></td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <Typography variant='body2' fontWeight={600}
-                          sx={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {inq.title}
+                    <tr key={q.inquiry_id}>
+                      <td><Typography variant='body2'>{page * 20 + idx + 1}</Typography></td>
+                      <td>
+                        <Typography variant='body2' fontWeight={600} sx={{
+                          maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                        }}>{q.title}</Typography>
+                      </td>
+                      <td>
+                        <Typography variant='caption' color='text.secondary'>
+                          {CATEGORY_OPTIONS.find(c => c.value === q.category)?.label ?? q.category ?? '-'}
                         </Typography>
                       </td>
-                      <td style={{ padding: '10px 12px' }}>
+                      <td>
                         <Chip label={sm.label} size='small' color={sm.color}
-                          variant={inq.status === 'ANSWERED' ? 'filled' : 'outlined'} />
+                          variant={q.has_answer ? 'filled' : 'outlined'} />
                       </td>
-                      <td style={{ padding: '10px 12px' }}><Typography variant='caption'>{fmtDate(inq.created_at)}</Typography></td>
-                      <td style={{ padding: '10px 12px' }}><Typography variant='caption'>{fmtDate(inq.replied_at)}</Typography></td>
+                      <td><Typography variant='caption'>{fmtDate(q.created_at)}</Typography></td>
+                      <td>
+                        <Typography variant='caption' color={q.has_answer ? 'success.main' : 'text.disabled'}>
+                          {q.answered_at ? fmtDate(q.answered_at) : '-'}
+                        </Typography>
+                      </td>
+                      <td>
+                        <Button size='small' variant='outlined'
+                          color={q.has_answer ? 'success' : 'secondary'}
+                          onClick={() => void openDetail(q.inquiry_id)}>
+                          {q.has_answer ? '답변확인' : '상세'}
+                        </Button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -176,81 +222,90 @@ export default function InquiriesView() {
           labelDisplayedRows={({ from, to, count }) => `${from}-${to} / 전체 ${count}건`} />
       </Card>
 
-      {/* 문의 상세 */}
-      <Dialog open={!!detail} onClose={() => setDetail(null)} maxWidth='sm' fullWidth>
-        <DialogTitle>문의 상세</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
-          {detail && (
-            <>
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                <Chip label={detail.category} size='small' variant='outlined' />
-                <Chip label={STATUS_MAP[detail.status]?.label ?? detail.status} size='small'
-                  color={STATUS_MAP[detail.status]?.color ?? 'default'} />
-                <Typography variant='caption' color='text.secondary' sx={{ ml: 'auto' }}>
-                  {fmtDate(detail.created_at)}
-                </Typography>
-              </Box>
-              <Typography variant='subtitle1' fontWeight={700}>{detail.title}</Typography>
-              <Paper variant='outlined' sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
-                <Typography variant='body2' sx={{ whiteSpace: 'pre-wrap' }}>{detail.content}</Typography>
-              </Paper>
-              {detail.reply_content && (
-                <>
-                  <Divider />
-                  <Box>
-                    <Typography variant='caption' color='text.secondary' fontWeight={600}
-                      sx={{ display: 'block', mb: 0.75 }}>관리자 답변 ({fmtDate(detail.replied_at)})</Typography>
-                    <Paper variant='outlined' sx={{ p: 2, borderColor: 'primary.light', borderRadius: 1 }}>
-                      <Typography variant='body2' color='primary.main' sx={{ whiteSpace: 'pre-wrap' }}>
-                        {detail.reply_content}
-                      </Typography>
-                    </Paper>
-                  </Box>
-                </>
-              )}
-              {!detail.reply_content && detail.status === 'PENDING' && (
-                <Alert severity='info' icon={<i className='tabler-clock' />}>
-                  관리자가 답변 준비 중입니다.
-                </Alert>
-              )}
-            </>
-          )}
+      {/* 문의 등록 다이얼로그 */}
+      <Dialog open={writeOpen} onClose={() => !writing && setWriteOpen(false)} maxWidth='sm' fullWidth>
+        <DialogTitle>문의 등록</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: '16px !important' }}>
+          <CustomTextField select fullWidth label='카테고리' value={writeForm.category}
+            onChange={e => setWriteForm(f => ({ ...f, category: e.target.value }))}>
+            {CATEGORY_OPTIONS.map(c => <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>)}
+          </CustomTextField>
+          <CustomTextField fullWidth label='제목 *' value={writeForm.title}
+            onChange={e => setWriteForm(f => ({ ...f, title: e.target.value }))}
+            placeholder='문의 제목을 입력하세요' />
+          <CustomTextField fullWidth multiline rows={6} label='내용 *' value={writeForm.content}
+            onChange={e => setWriteForm(f => ({ ...f, content: e.target.value }))}
+            placeholder='문의 내용을 입력하세요' />
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button variant='outlined' color='secondary' onClick={() => setDetail(null)}>닫기</Button>
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+          <Button variant='outlined' color='secondary'
+            onClick={() => setWriteOpen(false)}
+            disabled={writing}>취소</Button>
+          <Button variant='contained' onClick={() => void handleWrite()}
+            disabled={writing}
+            startIcon={writing ? <CircularProgress size={14} color='inherit' /> : undefined}>
+            {writing ? '등록 중…' : '등록 완료'}
+          </Button>
         </DialogActions>
       </Dialog>
 
-      {/* 문의 등록 다이얼로그 */}
-      <Dialog open={newDialog} onClose={() => setNewDialog(false)} maxWidth='sm' fullWidth>
-        <DialogTitle>문의 등록</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
-          <TextField select fullWidth size='small' label='분류'
-            value={newForm.category}
-            onChange={e => setNewForm(f => ({ ...f, category: e.target.value }))}>
-            {CATEGORY_OPTIONS.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-          </TextField>
-          <TextField fullWidth size='small' label='제목 *'
-            value={newForm.title}
-            onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))} />
-          <TextField fullWidth multiline rows={5} size='small' label='내용 *'
-            value={newForm.content}
-            onChange={e => setNewForm(f => ({ ...f, content: e.target.value }))} />
+      {/* 상세 / 답변확인 다이얼로그 */}
+      <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} maxWidth='sm' fullWidth>
+        <DialogTitle>문의 상세</DialogTitle>
+        <DialogContent dividers>
+          {detailLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : detail ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <Typography variant='caption' color='text.secondary'>
+                  {CATEGORY_OPTIONS.find(c => c.value === detail.category)?.label ?? detail.category}
+                </Typography>
+                <Typography variant='h6' fontWeight={700} sx={{ mt: 0.5 }}>{detail.title}</Typography>
+                <Typography variant='caption' color='text.secondary'>{fmtDate(detail.created_at)}</Typography>
+              </Box>
+              <Divider />
+              <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 2 }}>
+                <Typography variant='body2' sx={{ whiteSpace: 'pre-wrap' }}>{detail.content}</Typography>
+              </Box>
+              {detail.has_answer && detail.answer_content && (
+                <>
+                  <Divider />
+                  <Box sx={{ bgcolor: 'primary.lightOpacity', borderRadius: 1, p: 2, border: '1px solid', borderColor: 'primary.main' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant='subtitle2' fontWeight={700} color='primary.main'>
+                        답변
+                      </Typography>
+                      {detail.answered_at && (
+                        <Typography variant='caption' color='text.secondary'>{fmtDate(detail.answered_at)}</Typography>
+                      )}
+                    </Box>
+                    <Typography variant='body2' sx={{ whiteSpace: 'pre-wrap' }}>{detail.answer_content}</Typography>
+                  </Box>
+                </>
+              )}
+              {!detail.has_answer && (
+                <Box sx={{ textAlign: 'center', py: 2 }}>
+                  <Chip label='답변 대기 중' color='warning' variant='outlined' />
+                </Box>
+              )}
+            </Box>
+          ) : (
+            <Typography color='text.secondary' textAlign='center'>상세 정보를 불러올 수 없습니다.</Typography>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button variant='outlined' color='secondary' onClick={() => setNewDialog(false)}>취소</Button>
-          <Button variant='contained' onClick={() => void handleSubmitInquiry()} disabled={submitting}
-            startIcon={submitting ? <CircularProgress size={14} color='inherit' /> : undefined}>
-            {submitting ? '등록 중…' : '등록'}
-          </Button>
+          <Button variant='outlined' color='secondary' onClick={() => setDetailOpen(false)}>닫기</Button>
         </DialogActions>
       </Dialog>
 
       <Snackbar open={snack.open} autoHideDuration={4000}
         onClose={() => setSnack(s => ({ ...s, open: false }))}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <AlertMui severity={snack.sev} variant='filled'
-          onClose={() => setSnack(s => ({ ...s, open: false }))}>{snack.msg}</AlertMui>
+        <Alert severity={snack.sev} variant='filled'
+          onClose={() => setSnack(s => ({ ...s, open: false }))}>{snack.msg}</Alert>
       </Snackbar>
     </Box>
   )

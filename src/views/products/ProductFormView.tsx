@@ -1,184 +1,245 @@
 'use client'
 /**
- * KN541 SCM 상품 등록/수정 폼
- * POST /scm/products — 등록
- * PATCH /scm/products/:id — 수정
+ * KN541 SCM 상품 등록 / 수정
+ * POST  /scm/products        — 등록
+ * GET   /scm/products/:id    — 상세 조회 (수정 시)
+ * PATCH /scm/products/:id    — 수정
  */
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Box from '@mui/material/Box'
 import Card from '@mui/material/Card'
+import CardHeader from '@mui/material/CardHeader'
 import CardContent from '@mui/material/CardContent'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
-import TextField from '@mui/material/TextField'
-import MenuItem from '@mui/material/MenuItem'
-import Grid from '@mui/material/Grid'
 import CircularProgress from '@mui/material/CircularProgress'
-import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
+import Snackbar from '@mui/material/Snackbar'
+import MenuItem from '@mui/material/MenuItem'
 import Divider from '@mui/material/Divider'
 import Switch from '@mui/material/Switch'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import Grid from '@mui/material/Grid'
+import CustomTextField from '@core/components/mui/TextField'
 import { scmGet, scmPost, scmPatch } from '@/lib/scmApi'
 
 interface ProductForm {
-  product_name: string
-  brand: string
-  product_code: string
-  summary: string
-  supply_price: string
-  sale_price: string
-  stock_qty: string
-  is_display: boolean
-  tax_type: string
-  origin: string
+  product_name:    string
+  product_code:    string
+  category_id:     string
+  supply_price:    string
+  sale_price:      string
+  stock_qty:       string
+  product_status:  string
+  is_display:      boolean
+  description:     string
+  weight_gram:     string
+  origin:          string
 }
 
-const EMPTY: ProductForm = {
-  product_name: '', brand: '', product_code: '', summary: '',
-  supply_price: '0', sale_price: '0', stock_qty: '99999',
-  is_display: true, tax_type: '0', origin: ''
+const INITIAL: ProductForm = {
+  product_name:   '',
+  product_code:   '',
+  category_id:    '',
+  supply_price:   '',
+  sale_price:     '',
+  stock_qty:      '',
+  product_status: 'WAITING',
+  is_display:     false,
+  description:    '',
+  weight_gram:    '',
+  origin:         '',
 }
 
-export default function ProductFormView({ mode, productId }: { mode: 'create'|'edit'; productId?: string }) {
+const STATUS_OPTIONS = [
+  { value: 'WAITING',      label: '승인대기' },
+  { value: 'ON_SALE',      label: '판매중' },
+  { value: 'SOLD_OUT',     label: '품절' },
+  { value: 'DISCONTINUED', label: '단종' },
+]
+
+interface Props { productId?: string }
+
+export default function ProductFormView({ productId }: Props) {
   const router = useRouter()
-  const [form,    setForm]    = useState<ProductForm>(EMPTY)
-  const [loading, setLoading] = useState(mode === 'edit')
+  const isEdit = !!productId
+
+  const [form,    setForm]    = useState<ProductForm>(INITIAL)
+  const [loading, setLoading] = useState(isEdit)
   const [saving,  setSaving]  = useState(false)
+  const [error,   setError]   = useState('')
   const [snack,   setSnack]   = useState({ open: false, msg: '', sev: 'success' as 'success'|'error' })
   const toast = (msg: string, sev: 'success'|'error' = 'success') => setSnack({ open: true, msg, sev })
 
+  // 수정 시 기존 데이터 로드
   useEffect(() => {
-    if (mode !== 'edit' || !productId) return
+    if (!isEdit) return
     scmGet<Record<string, unknown>>(`/scm/products/${productId}`)
-      .then(p => setForm({
-        product_name: String(p.product_name ?? ''),
-        brand:        String(p.brand ?? ''),
-        product_code: String(p.product_code ?? ''),
-        summary:      String(p.summary ?? ''),
-        supply_price: String(p.supply_price ?? '0'),
-        sale_price:   String(p.sale_price ?? '0'),
-        stock_qty:    String(p.stock_qty ?? '0'),
-        is_display:   Boolean(p.is_display),
-        tax_type:     String(p.tax_type ?? '0'),
-        origin:       String(p.origin ?? ''),
+      .then(d => setForm({
+        product_name:   String(d.product_name   ?? ''),
+        product_code:   String(d.product_code   ?? ''),
+        category_id:    String(d.category_id    ?? ''),
+        supply_price:   String(d.supply_price   ?? ''),
+        sale_price:     String(d.sale_price     ?? ''),
+        stock_qty:      String(d.stock_qty      ?? ''),
+        product_status: String(d.product_status ?? 'WAITING'),
+        is_display:     Boolean(d.is_display),
+        description:    String(d.description   ?? ''),
+        weight_gram:    String(d.weight_gram    ?? ''),
+        origin:         String(d.origin         ?? ''),
       }))
-      .catch(e => toast(String(e.message), 'error'))
+      .catch(e => setError(String((e as Error).message)))
       .finally(() => setLoading(false))
-  }, [mode, productId])
+  }, [productId, isEdit])
 
-  const set = (key: keyof ProductForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm(f => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
+  const set = (k: keyof ProductForm, v: string | boolean) =>
+    setForm(f => ({ ...f, [k]: v }))
 
   const handleSubmit = async () => {
     if (!form.product_name.trim()) { toast('상품명을 입력하세요.', 'error'); return }
+    if (!form.sale_price)         { toast('판매가를 입력하세요.', 'error'); return }
     setSaving(true)
-    const payload = {
-      ...form,
-      supply_price: Number(form.supply_price) || 0,
-      sale_price:   Number(form.sale_price)   || 0,
-      stock_qty:    Number(form.stock_qty)    || 0,
-      tax_type:     Number(form.tax_type),
-    }
     try {
-      if (mode === 'create') {
-        await scmPost('/scm/products', payload)
-        toast('상품이 등록됐습니다.')
-        router.push('/products')
-      } else {
-        await scmPatch(`/scm/products/${productId}`, payload)
-        toast('저장됐습니다.')
-        router.push('/products')
+      const body = {
+        product_name:   form.product_name.trim(),
+        product_code:   form.product_code.trim() || null,
+        category_id:    form.category_id  || null,
+        supply_price:   Number(form.supply_price) || 0,
+        sale_price:     Number(form.sale_price),
+        stock_qty:      Number(form.stock_qty) || 0,
+        product_status: form.product_status,
+        is_display:     form.is_display,
+        description:    form.description.trim() || null,
+        weight_gram:    Number(form.weight_gram) || null,
+        origin:         form.origin.trim() || null,
       }
+      if (isEdit) {
+        await scmPatch(`/scm/products/${productId}`, body)
+        toast('상품이 수정됐습니다.')
+      } else {
+        await scmPost('/scm/products', body)
+        toast('상품이 등록됐습니다.')
+      }
+      setTimeout(() => router.push('/products'), 1200)
     } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : '저장 실패', 'error')
+      toast(e instanceof Error ? e.message : '저장 중 오류가 발생했습니다.', 'error')
     } finally { setSaving(false) }
   }
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress /></Box>
+  if (loading) {
+    return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress /></Box>
+  }
 
   return (
     <Box className='flex flex-col gap-4'>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Button variant='text' color='inherit' startIcon={<i className='tabler-arrow-left' />}
-          onClick={() => router.push('/products')}>목록</Button>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant='h5' fontWeight={700}>
-          {mode === 'create' ? '상품 등록' : '상품 수정'}
+          {isEdit ? '상품 수정' : '상품 등록'}
         </Typography>
+        <Button variant='outlined' color='secondary' onClick={() => router.push('/products')}>
+          목록으로
+        </Button>
       </Box>
 
+      {error && <Alert severity='error'>{error}</Alert>}
+
       <Card>
-        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-
-          <Typography variant='subtitle2' color='text.secondary'>기본 정보</Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <TextField required fullWidth size='small' label='상품명'
-                value={form.product_name} onChange={set('product_name')} />
+        <CardHeader title='기본 정보' />
+        <CardContent>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <CustomTextField fullWidth label='상품명 *' value={form.product_name}
+                onChange={e => set('product_name', e.target.value)}
+                placeholder='상품명을 입력하세요' />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField fullWidth size='small' label='브랜드'
-                value={form.brand} onChange={set('brand')} />
+            <Grid item xs={12} md={6}>
+              <CustomTextField fullWidth label='상품코드' value={form.product_code}
+                onChange={e => set('product_code', e.target.value)}
+                placeholder='상품코드 (선택)' />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField fullWidth size='small' label='원상품코드 (선택)'
-                value={form.product_code} onChange={set('product_code')} />
+            <Grid item xs={12} md={4}>
+              <CustomTextField fullWidth label='공급가 (원)' value={form.supply_price}
+                onChange={e => set('supply_price', e.target.value)}
+                type='number' placeholder='0' />
             </Grid>
-            <Grid item xs={12}>
-              <TextField fullWidth size='small' label='한줄 요약' multiline rows={2}
-                value={form.summary} onChange={set('summary')} />
+            <Grid item xs={12} md={4}>
+              <CustomTextField fullWidth label='판매가 (원) *' value={form.sale_price}
+                onChange={e => set('sale_price', e.target.value)}
+                type='number' placeholder='0' />
             </Grid>
-          </Grid>
-
-          <Divider />
-          <Typography variant='subtitle2' color='text.secondary'>가격 / 재고</Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={4}>
-              <TextField required fullWidth size='small' label='공급가' type='number'
-                value={form.supply_price} onChange={set('supply_price')}
-                inputProps={{ min: 0, step: 'any' }} />
+            <Grid item xs={12} md={4}>
+              <CustomTextField fullWidth label='재고 수량' value={form.stock_qty}
+                onChange={e => set('stock_qty', e.target.value)}
+                type='number' placeholder='0' />
             </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField required fullWidth size='small' label='판매가' type='number'
-                value={form.sale_price} onChange={set('sale_price')}
-                inputProps={{ min: 0, step: 'any' }} />
+            <Grid item xs={12} md={4}>
+              <CustomTextField select fullWidth label='상품 상태' value={form.product_status}
+                onChange={e => set('product_status', e.target.value)}>
+                {STATUS_OPTIONS.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+              </CustomTextField>
             </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField fullWidth size='small' label='재고수량' type='number'
-                value={form.stock_qty} onChange={set('stock_qty')}
-                inputProps={{ min: 0 }} />
+            <Grid item xs={12} md={4}>
+              <CustomTextField fullWidth label='원산지' value={form.origin}
+                onChange={e => set('origin', e.target.value)}
+                placeholder='원산지 (선택)' />
             </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField select fullWidth size='small' label='세금유형'
-                value={form.tax_type} onChange={set('tax_type')}>
-                <MenuItem value='0'>과세 (10%)</MenuItem>
-                <MenuItem value='1'>비과세</MenuItem>
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField fullWidth size='small' label='원산지'
-                value={form.origin} onChange={set('origin')} />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <FormControlLabel
-                control={<Switch checked={form.is_display}
-                  onChange={e => setForm(f => ({ ...f, is_display: e.target.checked }))} />}
-                label='진열 여부' />
+            <Grid item xs={12} md={4}>
+              <CustomTextField fullWidth label='무게 (g)' value={form.weight_gram}
+                onChange={e => set('weight_gram', e.target.value)}
+                type='number' placeholder='0' />
             </Grid>
           </Grid>
-
-          <Divider />
-          <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'flex-end' }}>
-            <Button variant='outlined' color='secondary'
-              onClick={() => router.push('/products')}>취소</Button>
-            <Button variant='contained' onClick={() => void handleSubmit()} disabled={saving}
-              startIcon={saving ? <CircularProgress size={16} color='inherit' /> : undefined}>
-              {mode === 'create' ? '등록하기' : '저장하기'}
-            </Button>
-          </Box>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader title='상품 설명' />
+        <CardContent>
+          <CustomTextField fullWidth multiline rows={6} label='상품 설명'
+            value={form.description}
+            onChange={e => set('description', e.target.value)}
+            placeholder='상품 설명을 입력하세요 (선택)' />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader title='진열 설정' />
+        <CardContent>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.is_display}
+                onChange={e => set('is_display', e.target.checked)}
+                color='success'
+              />
+            }
+            label={
+              <Box>
+                <Typography variant='body2' fontWeight={600}>
+                  {form.is_display ? '진열 중' : '숨김'}
+                </Typography>
+                <Typography variant='caption' color='text.secondary'>
+                  승인 후 진열 여부를 설정합니다
+                </Typography>
+              </Box>
+            }
+          />
+        </CardContent>
+      </Card>
+
+      <Divider />
+
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+        <Button variant='outlined' color='secondary' onClick={() => router.push('/products')}>
+          취소
+        </Button>
+        <Button variant='contained' onClick={() => void handleSubmit()}
+          disabled={saving}
+          startIcon={saving ? <CircularProgress size={16} color='inherit' /> : undefined}>
+          {saving ? '저장 중…' : isEdit ? '수정 완료' : '등록 완료'}
+        </Button>
+      </Box>
 
       <Snackbar open={snack.open} autoHideDuration={4000}
         onClose={() => setSnack(s => ({ ...s, open: false }))}
