@@ -17,23 +17,18 @@ import '@/app/globals.css'
 import '@assets/iconify-icons/generated-icons.css'
 
 export const metadata = {
-  title: 'Vuexy - MUI Next.js Admin Dashboard Template',
-  description:
-    'Vuexy - MUI Next.js Admin Dashboard Template - is the most developer friendly & highly customizable Admin Dashboard Template based on MUI v5.'
+  title: 'KN541 SCM - 공급사 파트너 포털',
+  description: 'KN541 공급사 파트너 포털 - 상품관리, 주문관리, 정산관리'
 }
 
 const RootLayout = async (props: ChildrenType) => {
   const { children } = props
 
-  // Type guard to ensure lang is a valid Locale
-
-  // Vars
-
   const systemMode = await getSystemMode()
   const direction = 'ltr'
 
   return (
-    <html id='__next' lang='en' dir={direction} suppressHydrationWarning>
+    <html id='__next' lang='ko' dir={direction} suppressHydrationWarning>
       <body className='flex is-full min-bs-full flex-auto flex-col'>
         <InitColorSchemeScript attribute='data' defaultMode={systemMode} />
         {children}
