@@ -1,0 +1,1 @@
+{"version":3,"sources":["../../../../../../../Desktop/GitHub/kn541-scm/src/app/%28dashboard%29/about/page.tsx"],"sourcesContent":["export default function Page() {\n  return <h1>About page!</h1>\n}\n"],"names":[],"mappings":"gXAAe,SAAS,IACtB,MAAO,CAAA,EAAA,EAAA,GAAA,EAAC,KAAA,UAAG,eACb"}
