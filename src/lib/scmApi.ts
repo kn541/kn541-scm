@@ -1,5 +1,6 @@
 // KN541 SCM API 공통 헬퍼
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'https://kn541-backend.fly.dev'
+// ※ fly.dev → Railway 이전 완료 (2026-04-21)
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'https://kn541-production.up.railway.app'
 
 export function authHeaders(): Record<string, string> {
   const token = typeof window !== 'undefined' ? (localStorage.getItem('access_token') ?? '') : ''
