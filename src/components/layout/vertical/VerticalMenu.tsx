@@ -22,7 +22,7 @@ import menuItemStyles from '@core/styles/vertical/menuItemStyles'
 import menuSectionStyles from '@core/styles/vertical/menuSectionStyles'
 
 // Data Imports
-import verticalMenuData from '@/data/navigation/verticalMenuData'
+import verticalMenuData, { type KN541MenuItemType } from '@/data/navigation/verticalMenuData'
 
 type RenderExpandIconProps = {
   open?: boolean
@@ -47,7 +47,9 @@ const VerticalMenu = ({ scrollMenu }: Props) => {
   // Vars
   const { isBreakpointReached, transitionDuration } = verticalNavOptions
   const ScrollWrapper = isBreakpointReached ? 'div' : PerfectScrollbar
-  const menuData = verticalMenuData()
+
+  // KN541 SCM 메뉴 데이터
+  const menuData: KN541MenuItemType[] = verticalMenuData()
 
   return (
     <ScrollWrapper
@@ -68,8 +70,12 @@ const VerticalMenu = ({ scrollMenu }: Props) => {
         renderExpandedMenuItemIcon={{ icon: <i className='tabler-circle text-xs' /> }}
         menuSectionStyles={menuSectionStyles(verticalNavOptions, theme)}
       >
-        {menuData.map((item, idx) => (
-          <MenuItem key={idx} href={item.href} icon={<i className={item.icon} />}>
+        {menuData.map((item: KN541MenuItemType, idx: number) => (
+          <MenuItem
+            key={idx}
+            href={item.href}
+            icon={<i className={item.icon} />}
+          >
             {item.label}
           </MenuItem>
         ))}

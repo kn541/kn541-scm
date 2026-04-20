@@ -1,7 +1,13 @@
 // KN541 SCM 포털 — 사이드 메뉴
-import type { VerticalMenuDataType } from '@/types/menuTypes'
 
-const verticalMenuData = (): VerticalMenuDataType[] => [
+// KN541 전용 메뉴 타입 (VerticalMenuDataType 대신 사용)
+export type KN541MenuItemType = {
+  label: string
+  href: string
+  icon: string
+}
+
+const verticalMenuData = (): KN541MenuItemType[] => [
   {
     label: '대시보드',
     href: '/dashboard',
