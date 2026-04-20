@@ -21,7 +21,6 @@ import CustomTextField from '@core/components/mui/TextField'
 import { scmGet, scmPatch } from '@/lib/scmApi'
 
 interface Profile {
-  // 사업자정보 (읽기 전용)
   company_name:    string | null
   business_no:     string | null
   ceo_name:        string | null
@@ -31,7 +30,6 @@ interface Profile {
   supplier_grade:  string | null
   status:          string | null
   joined_at:       string | null
-  // 정산정보 (수정 가능)
   bank_name:        string | null
   account_no:       string | null
   account_holder:   string | null
@@ -61,11 +59,9 @@ export default function MypageView() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
-
   const [form,    setForm]    = useState<SettlementForm>({ bank_name: '', account_no: '', account_holder: '' })
   const [saving,  setSaving]  = useState(false)
   const [editMode,setEditMode]= useState(false)
-
   const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' as 'success'|'error' })
   const toast = (msg: string, sev: 'success'|'error' = 'success') => setSnack({ open: true, msg, sev })
 
@@ -96,7 +92,6 @@ export default function MypageView() {
       })
       toast('정산정보가 저장됐습니다.')
       setEditMode(false)
-      // 프로필 갱신
       const updated = await scmGet<Profile>('/scm/profile')
       setProfile(updated)
     } catch (e: unknown) {
@@ -104,13 +99,8 @@ export default function MypageView() {
     } finally { setSaving(false) }
   }
 
-  if (loading) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress /></Box>
-  }
-
-  if (error) {
-    return <Alert severity='error'>{error}</Alert>
-  }
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress /></Box>
+  if (error)   return <Alert severity='error'>{error}</Alert>
 
   const sm = STATUS_MAP[profile?.status ?? ''] ?? { label: profile?.status ?? '-', color: 'default' as const }
 
@@ -118,36 +108,33 @@ export default function MypageView() {
     <Box className='flex flex-col gap-4'>
       <Typography variant='h5' fontWeight={700}>마이페이지</Typography>
 
-      {/* ── 사업자 정보 (읽기 전용) ── */}
       <Card>
         <CardHeader
           title='사업자 정보'
           subheader='사업자 정보는 관리자를 통해 변경 가능합니다.'
-          action={
-            <Chip label={sm.label} color={sm.color} size='small' sx={{ fontWeight: 700 }} />
-          }
+          action={<Chip label={sm.label} color={sm.color} size='small' sx={{ fontWeight: 700 }} />}
         />
         <CardContent>
           <Grid container spacing={2.5}>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <ReadField label='상호명'    value={profile?.company_name    ?? '-'} />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <ReadField label='사업자번호' value={profile?.business_no      ?? '-'} />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <ReadField label='대표자'    value={profile?.ceo_name         ?? '-'} />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <ReadField label='연락처'    value={profile?.company_phone    ?? '-'} />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <ReadField label='사업장 주소' value={profile?.company_address ?? '-'} />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <ReadField label='담당자 이메일' value={profile?.contact_email   ?? '-'} />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <ReadField label='공급사 등급'
                 value={SUPPLIER_GRADE_MAP[profile?.supplier_grade ?? ''] ?? profile?.supplier_grade ?? '-'} />
             </Grid>
@@ -155,7 +142,6 @@ export default function MypageView() {
         </CardContent>
       </Card>
 
-      {/* ── 정산 정보 (수정 가능) ── */}
       <Card>
         <CardHeader
           title='정산 정보'
@@ -163,47 +149,41 @@ export default function MypageView() {
             !editMode ? (
               <Button variant='outlined' size='small'
                 startIcon={<i className='tabler-edit' />}
-                onClick={() => setEditMode(true)}>
-                수정
-              </Button>
+                onClick={() => setEditMode(true)}>수정</Button>
             ) : null
           }
         />
         <CardContent>
-          {/* 읽기 전용: 정산주기 / 수수료율 */}
           <Grid container spacing={2.5} sx={{ mb: 2 }}>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <ReadField label='정산 주기' value={profile?.settlement_cycle ?? '-'} />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <ReadField
-                label='수수료율'
-                value={profile?.commission_rate != null ? `${profile.commission_rate}%` : '-'}
-              />
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <ReadField label='수수료율'
+                value={profile?.commission_rate != null ? `${profile.commission_rate}%` : '-'} />
             </Grid>
           </Grid>
 
           <Divider sx={{ my: 2 }} />
 
-          {/* 계좌 정보 */}
           {editMode ? (
             <Grid container spacing={2.5}>
-              <Grid item xs={12} sm={4}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <CustomTextField fullWidth label='은행명 *' value={form.bank_name}
                   onChange={e => setForm(f => ({ ...f, bank_name: e.target.value }))}
                   placeholder='예: 국민은행' />
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <CustomTextField fullWidth label='계좌번호 *' value={form.account_no}
                   onChange={e => setForm(f => ({ ...f, account_no: e.target.value }))}
                   placeholder='000-0000-0000' />
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <CustomTextField fullWidth label='예금주 *' value={form.account_holder}
                   onChange={e => setForm(f => ({ ...f, account_holder: e.target.value }))}
                   placeholder='예금주명' />
               </Grid>
-              <Grid item xs={12}>
+              <Grid size={12}>
                 <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
                   <Button variant='outlined' color='secondary'
                     onClick={() => {
@@ -214,9 +194,7 @@ export default function MypageView() {
                         account_holder: profile?.account_holder ?? '',
                       })
                     }}
-                    disabled={saving}>
-                    취소
-                  </Button>
+                    disabled={saving}>취소</Button>
                   <Button variant='contained' onClick={() => void handleSave()}
                     disabled={saving}
                     startIcon={saving ? <CircularProgress size={14} color='inherit' /> : undefined}>
@@ -227,13 +205,13 @@ export default function MypageView() {
             </Grid>
           ) : (
             <Grid container spacing={2.5}>
-              <Grid item xs={12} sm={4}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <ReadField label='은행명'  value={profile?.bank_name      ?? '-'} />
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <ReadField label='계좌번호' value={profile?.account_no     ?? '-'} />
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <ReadField label='예금주'  value={profile?.account_holder ?? '-'} />
               </Grid>
             </Grid>
@@ -253,9 +231,7 @@ export default function MypageView() {
 
 const ReadField = ({ label, value }: { label: string; value: string }) => (
   <Box>
-    <Typography variant='caption' color='text.secondary' display='block' sx={{ mb: 0.25 }}>
-      {label}
-    </Typography>
+    <Typography variant='caption' color='text.secondary' display='block' sx={{ mb: 0.25 }}>{label}</Typography>
     <Typography variant='body2' fontWeight={500}>{value}</Typography>
   </Box>
 )

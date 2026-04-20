@@ -72,7 +72,6 @@ export default function ProductFormView({ productId }: Props) {
   const [snack,   setSnack]   = useState({ open: false, msg: '', sev: 'success' as 'success'|'error' })
   const toast = (msg: string, sev: 'success'|'error' = 'success') => setSnack({ open: true, msg, sev })
 
-  // 수정 시 기존 데이터 로드
   useEffect(() => {
     if (!isEdit) return
     scmGet<Record<string, unknown>>(`/scm/products/${productId}`)
@@ -93,8 +92,7 @@ export default function ProductFormView({ productId }: Props) {
       .finally(() => setLoading(false))
   }, [productId, isEdit])
 
-  const set = (k: keyof ProductForm, v: string | boolean) =>
-    setForm(f => ({ ...f, [k]: v }))
+  const set = (k: keyof ProductForm, v: string | boolean) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSubmit = async () => {
     if (!form.product_name.trim()) { toast('상품명을 입력하세요.', 'error'); return }
@@ -127,19 +125,13 @@ export default function ProductFormView({ productId }: Props) {
     } finally { setSaving(false) }
   }
 
-  if (loading) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress /></Box>
-  }
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress /></Box>
 
   return (
     <Box className='flex flex-col gap-4'>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant='h5' fontWeight={700}>
-          {isEdit ? '상품 수정' : '상품 등록'}
-        </Typography>
-        <Button variant='outlined' color='secondary' onClick={() => router.push('/products')}>
-          목록으로
-        </Button>
+        <Typography variant='h5' fontWeight={700}>{isEdit ? '상품 수정' : '상품 등록'}</Typography>
+        <Button variant='outlined' color='secondary' onClick={() => router.push('/products')}>목록으로</Button>
       </Box>
 
       {error && <Alert severity='error'>{error}</Alert>}
@@ -148,43 +140,43 @@ export default function ProductFormView({ productId }: Props) {
         <CardHeader title='기본 정보' />
         <CardContent>
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <CustomTextField fullWidth label='상품명 *' value={form.product_name}
                 onChange={e => set('product_name', e.target.value)}
                 placeholder='상품명을 입력하세요' />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <CustomTextField fullWidth label='상품코드' value={form.product_code}
                 onChange={e => set('product_code', e.target.value)}
                 placeholder='상품코드 (선택)' />
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <CustomTextField fullWidth label='공급가 (원)' value={form.supply_price}
                 onChange={e => set('supply_price', e.target.value)}
                 type='number' placeholder='0' />
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <CustomTextField fullWidth label='판매가 (원) *' value={form.sale_price}
                 onChange={e => set('sale_price', e.target.value)}
                 type='number' placeholder='0' />
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <CustomTextField fullWidth label='재고 수량' value={form.stock_qty}
                 onChange={e => set('stock_qty', e.target.value)}
                 type='number' placeholder='0' />
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <CustomTextField select fullWidth label='상품 상태' value={form.product_status}
                 onChange={e => set('product_status', e.target.value)}>
                 {STATUS_OPTIONS.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
               </CustomTextField>
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <CustomTextField fullWidth label='원산지' value={form.origin}
                 onChange={e => set('origin', e.target.value)}
                 placeholder='원산지 (선택)' />
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <CustomTextField fullWidth label='무게 (g)' value={form.weight_gram}
                 onChange={e => set('weight_gram', e.target.value)}
                 type='number' placeholder='0' />
@@ -208,20 +200,12 @@ export default function ProductFormView({ productId }: Props) {
         <CardContent>
           <FormControlLabel
             control={
-              <Switch
-                checked={form.is_display}
-                onChange={e => set('is_display', e.target.checked)}
-                color='success'
-              />
+              <Switch checked={form.is_display} onChange={e => set('is_display', e.target.checked)} color='success' />
             }
             label={
               <Box>
-                <Typography variant='body2' fontWeight={600}>
-                  {form.is_display ? '진열 중' : '숨김'}
-                </Typography>
-                <Typography variant='caption' color='text.secondary'>
-                  승인 후 진열 여부를 설정합니다
-                </Typography>
+                <Typography variant='body2' fontWeight={600}>{form.is_display ? '진열 중' : '숨김'}</Typography>
+                <Typography variant='caption' color='text.secondary'>승인 후 진열 여부를 설정합니다</Typography>
               </Box>
             }
           />
@@ -231,9 +215,7 @@ export default function ProductFormView({ productId }: Props) {
       <Divider />
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-        <Button variant='outlined' color='secondary' onClick={() => router.push('/products')}>
-          취소
-        </Button>
+        <Button variant='outlined' color='secondary' onClick={() => router.push('/products')}>취소</Button>
         <Button variant='contained' onClick={() => void handleSubmit()}
           disabled={saving}
           startIcon={saving ? <CircularProgress size={16} color='inherit' /> : undefined}>
