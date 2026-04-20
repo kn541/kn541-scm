@@ -90,7 +90,7 @@ export default function DashboardView() {
           {STAT_CARDS.map(card => {
             const val = (data as Record<string, number> | null)?.[card.key] ?? 0
             return (
-              <Grid key={card.key} item xs={12} sm={6} md={3}>
+              <Grid key={card.key} size={{ xs: 12, sm: 6, md: 3 }}>
                 <Card
                   sx={{ cursor: 'pointer', transition: 'box-shadow .15s', '&:hover': { boxShadow: 6 } }}
                   onClick={() => router.push(card.href)}
