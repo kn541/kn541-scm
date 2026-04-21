@@ -1,21 +1,3 @@
-/*
- * If you change the following items in the config object, you will not see any effect in the local development server
- * as these are stored in the cookie (cookie has the highest priority over the themeConfig):
- * 1. mode
- * 2. skin
- * 3. semiDark
- * 4. layout
- * 5. navbar.contentWidth
- * 6. contentWidth
- * 7. footer.contentWidth
- *
- * To see the effect of the above items, you can click on the reset button from the Customizer
- * which is on the top-right corner of the customizer besides the close button.
- * This will reset the cookie to the values provided in the config object below.
- *
- * Another way is to clear the cookie from the browser's Application/Storage tab and then reload the page.
- */
-
 // Type Imports
 import type { Mode, Skin, Layout, LayoutComponentPosition, LayoutComponentWidth } from '@core/types'
 
@@ -50,29 +32,29 @@ export type Config = {
 }
 
 const themeConfig: Config = {
-  templateName: 'Vuexy',
-  homePageUrl: '/home',
-  settingsCookieName: 'vuexy-mui-next-demo-1',
-  mode: 'system', // 'system', 'light', 'dark'
-  skin: 'default', // 'default', 'bordered'
-  semiDark: false, // true, false
-  layout: 'vertical', // 'vertical', 'collapsed', 'horizontal'
-  layoutPadding: 24, // Common padding for header, content, footer layout components (in px)
-  compactContentWidth: 1440, // in px
+  templateName: 'KN541 SCM',
+  homePageUrl: '/dashboard',
+  settingsCookieName: 'kn541-scm-v1',       // 쿠키 이름 변경 → 기존 vertical 쿠키 무효화
+  mode: 'light',                             // 'system', 'light', 'dark'
+  skin: 'default',                           // 'default', 'bordered'
+  semiDark: false,
+  layout: 'horizontal',                      // ← 탑바 수평 레이아웃
+  layoutPadding: 24,
+  compactContentWidth: 1440,
   navbar: {
-    type: 'fixed', // 'fixed', 'static'
-    contentWidth: 'compact', // 'compact', 'wide'
-    floating: true, //! true, false (This will not work in the Horizontal Layout)
-    detached: true, //! true, false (This will not work in the Horizontal Layout or floating navbar is enabled)
-    blur: true // true, false
+    type: 'fixed',
+    contentWidth: 'compact',
+    floating: false,                          // horizontal 에서는 false 필수
+    detached: false,                          // horizontal 에서는 false 필수
+    blur: true
   },
-  contentWidth: 'compact', // 'compact', 'wide'
+  contentWidth: 'compact',
   footer: {
-    type: 'static', // 'fixed', 'static'
-    contentWidth: 'compact', // 'compact', 'wide'
-    detached: true //! true, false (This will not work in the Horizontal Layout)
+    type: 'static',
+    contentWidth: 'compact',
+    detached: false                           // horizontal 에서는 false 필수
   },
-  disableRipple: false // true, false
+  disableRipple: false
 }
 
 export default themeConfig
