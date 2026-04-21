@@ -1,4 +1,7 @@
 'use client'
+// KN541 SCM 포털 — 수직 메뉴
+// 어드민과 동일한 SubMenu + MenuItem 계층 구조 사용
+
 // MUI Imports
 import { useTheme } from '@mui/material/styles'
 
@@ -9,7 +12,7 @@ import PerfectScrollbar from 'react-perfect-scrollbar'
 import type { VerticalMenuContextProps } from '@menu/components/vertical-menu/Menu'
 
 // Component Imports
-import { Menu, MenuItem } from '@menu/vertical-menu'
+import { Menu, SubMenu, MenuItem } from '@menu/vertical-menu'
 
 // Hook Imports
 import useVerticalNav from '@menu/hooks/useVerticalNav'
@@ -22,7 +25,7 @@ import menuItemStyles from '@core/styles/vertical/menuItemStyles'
 import menuSectionStyles from '@core/styles/vertical/menuSectionStyles'
 
 // Data Imports
-import verticalMenuData, { type KN541MenuItemType } from '@/data/navigation/verticalMenuData'
+import verticalMenuData from '@/data/navigation/verticalMenuData'
 
 type RenderExpandIconProps = {
   open?: boolean
@@ -40,16 +43,10 @@ const RenderExpandIcon = ({ open, transitionDuration }: RenderExpandIconProps) =
 )
 
 const VerticalMenu = ({ scrollMenu }: Props) => {
-  // Hooks
   const theme = useTheme()
   const verticalNavOptions = useVerticalNav()
-
-  // Vars
   const { isBreakpointReached, transitionDuration } = verticalNavOptions
   const ScrollWrapper = isBreakpointReached ? 'div' : PerfectScrollbar
-
-  // KN541 SCM 메뉴 데이터
-  const menuData: KN541MenuItemType[] = verticalMenuData()
 
   return (
     <ScrollWrapper
@@ -70,15 +67,46 @@ const VerticalMenu = ({ scrollMenu }: Props) => {
         renderExpandedMenuItemIcon={{ icon: <i className='tabler-circle text-xs' /> }}
         menuSectionStyles={menuSectionStyles(verticalNavOptions, theme)}
       >
-        {menuData.map((item: KN541MenuItemType, idx: number) => (
-          <MenuItem
-            key={idx}
-            href={item.href}
-            icon={<i className={item.icon} />}
-          >
-            {item.label}
-          </MenuItem>
-        ))}
+        {/* 대시보드 */}
+        <MenuItem href='/dashboard' icon={<i className='tabler-layout-dashboard' />}>
+          대시보드
+        </MenuItem>
+
+        {/* 상품 관리 */}
+        <SubMenu label='상품 관리' icon={<i className='tabler-package' />}>
+          <MenuItem href='/products'>내 상품 목록</MenuItem>
+          <MenuItem href='/products/new'>상품 등록</MenuItem>
+        </SubMenu>
+
+        {/* 주문 확인 */}
+        <SubMenu label='주문 확인' icon={<i className='tabler-shopping-cart' />}>
+          <MenuItem href='/orders'>주문 목록</MenuItem>
+          <MenuItem href='/orders/shipping'>배송 처리</MenuItem>
+        </SubMenu>
+
+        {/* 정산 */}
+        <SubMenu label='정산' icon={<i className='tabler-receipt' />}>
+          <MenuItem href='/settlements'>정산 내역</MenuItem>
+          <MenuItem href='/settlements/payments'>입금 확인</MenuItem>
+        </SubMenu>
+
+        {/* 문의 */}
+        <SubMenu label='문의' icon={<i className='tabler-message-circle' />}>
+          <MenuItem href='/inquiries'>문의 내역</MenuItem>
+          <MenuItem href='/inquiries/new'>문의 등록</MenuItem>
+        </SubMenu>
+
+        {/* 공지사항 */}
+        <MenuItem href='/notices' icon={<i className='tabler-speakerphone' />}>
+          공지사항
+        </MenuItem>
+
+        {/* 마이페이지 */}
+        <SubMenu label='마이페이지' icon={<i className='tabler-user-circle' />}>
+          <MenuItem href='/mypage'>사업자 정보</MenuItem>
+          <MenuItem href='/mypage/contacts'>담당자 관리</MenuItem>
+          <MenuItem href='/mypage/password'>비밀번호 변경</MenuItem>
+        </SubMenu>
       </Menu>
     </ScrollWrapper>
   )
