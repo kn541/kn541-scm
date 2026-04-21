@@ -1,6 +1,7 @@
 'use client'
 // KN541 SCM 로그인
 // POST /auth/login → access_token localStorage 저장 → /dashboard 이동
+// 백엔드 LoginRequest: login_id (또는 username) + password
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -43,11 +44,11 @@ const MaskImg = styled('img')({
 })
 
 export default function LoginV2({ mode }: { mode: SystemMode }) {
-  const [identifier, setIdentifier] = useState('')
-  const [password,   setPassword]   = useState('')
-  const [showPw,     setShowPw]     = useState(false)
-  const [loading,    setLoading]    = useState(false)
-  const [error,      setError]      = useState('')
+  const [loginId,  setLoginId]  = useState('')
+  const [password, setPassword] = useState('')
+  const [showPw,   setShowPw]   = useState(false)
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState('')
 
   const router = useRouter()
   const { settings } = useSettings()
@@ -61,33 +62,29 @@ export default function LoginV2({ mode }: { mode: SystemMode }) {
   const darkBord  = '/images/illustrations/auth/v2-login-dark-border.png'
   const lightBord = '/images/illustrations/auth/v2-login-light-border.png'
 
-  const authBackground      = useImageVariant(mode, lightImg,  darkImg)
+  const authBackground        = useImageVariant(mode, lightImg, darkImg)
   const characterIllustration = useImageVariant(mode, lightIll, darkIll, lightBord, darkBord)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!identifier.trim()) { setError('아이디 또는 이메일을 입력하세요.'); return }
-    if (!password.trim())   { setError('비밀번호를 입력하세요.'); return }
+    if (!loginId.trim())  { setError('아이디 또는 이메일을 입력하세요.'); return }
+    if (!password.trim()) { setError('비밀번호를 입력하세요.'); return }
 
     setLoading(true)
     setError('')
 
     try {
+      // 백엔드 LoginRequest 스펙: { login_id, password }
       const res = await fetch(`${BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password }),
+        body: JSON.stringify({ login_id: loginId.trim(), password }),
       })
 
       const json = await res.json()
 
       if (!res.ok) {
-        // 401: 잘못된 자격증명, 403: user_type 불일치
-        if (res.status === 403) {
-          setError('공급사 계정이 아닙니다. SCM 포털은 공급사만 이용 가능합니다.')
-        } else {
-          setError(json.detail ?? '로그인에 실패했습니다. 아이디와 비밀번호를 확인해주세요.')
-        }
+        setError(json.detail ?? '로그인에 실패했습니다. 아이디와 비밀번호를 확인해주세요.')
         return
       }
 
@@ -100,11 +97,11 @@ export default function LoginV2({ mode }: { mode: SystemMode }) {
       }
 
       // 토큰 저장
-      localStorage.setItem('access_token',  data.access_token  ?? data.token ?? '')
+      localStorage.setItem('access_token',  data.access_token  ?? '')
       localStorage.setItem('refresh_token', data.refresh_token ?? '')
       localStorage.setItem('user_type',     data.user_type     ?? '004')
-      localStorage.setItem('user_id',       data.user_id       ?? data.id ?? '')
-      localStorage.setItem('username',      data.username      ?? identifier)
+      localStorage.setItem('user_id',       data.user_id       ?? '')
+      localStorage.setItem('username',      loginId.trim())
 
       // 대시보드로 이동
       router.push('/dashboard')
@@ -151,8 +148,8 @@ export default function LoginV2({ mode }: { mode: SystemMode }) {
               fullWidth
               label='아이디 또는 이메일'
               placeholder='아이디 또는 이메일 주소'
-              value={identifier}
-              onChange={e => setIdentifier(e.target.value)}
+              value={loginId}
+              onChange={e => setLoginId(e.target.value)}
               disabled={loading}
             />
             <CustomTextField
