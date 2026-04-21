@@ -1,53 +1,36 @@
 'use client'
+// KN541 SCM 로그인
+// POST /auth/login → access_token localStorage 저장 → /dashboard 이동
 
-// React Imports
 import { useState } from 'react'
-
-// Next Imports
 import { useRouter } from 'next/navigation'
-
-// MUI Imports
-import useMediaQuery from '@mui/material/useMediaQuery'
 import { styled, useTheme } from '@mui/material/styles'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
 import InputAdornment from '@mui/material/InputAdornment'
-import Checkbox from '@mui/material/Checkbox'
 import Button from '@mui/material/Button'
-import FormControlLabel from '@mui/material/FormControlLabel'
-import Divider from '@mui/material/Divider'
-
-// Third-party Imports
+import Alert from '@mui/material/Alert'
+import CircularProgress from '@mui/material/CircularProgress'
 import classnames from 'classnames'
-
-// Type Imports
 import type { SystemMode } from '@core/types'
-
-// Component Imports
 import Link from '@components/Link'
 import Logo from '@components/layout/shared/Logo'
 import CustomTextField from '@core/components/mui/TextField'
-
-// Config Imports
 import themeConfig from '@configs/themeConfig'
-
-// Hook Imports
 import { useImageVariant } from '@core/hooks/useImageVariant'
 import { useSettings } from '@core/hooks/useSettings'
 
-// Styled Custom Components
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'https://kn541-production.up.railway.app'
+
 const LoginIllustration = styled('img')(({ theme }) => ({
   zIndex: 2,
   blockSize: 'auto',
   maxBlockSize: 680,
   maxInlineSize: '100%',
   margin: theme.spacing(12),
-  [theme.breakpoints.down(1536)]: {
-    maxBlockSize: 550
-  },
-  [theme.breakpoints.down('lg')]: {
-    maxBlockSize: 450
-  }
+  [theme.breakpoints.down(1536)]: { maxBlockSize: 550 },
+  [theme.breakpoints.down('lg')]:  { maxBlockSize: 450 },
 }))
 
 const MaskImg = styled('img')({
@@ -56,129 +39,158 @@ const MaskImg = styled('img')({
   inlineSize: '100%',
   position: 'absolute',
   insetBlockEnd: 0,
-  zIndex: -1
+  zIndex: -1,
 })
 
-const LoginV2 = ({ mode }: { mode: SystemMode }) => {
-  // States
-  const [isPasswordShown, setIsPasswordShown] = useState(false)
+export default function LoginV2({ mode }: { mode: SystemMode }) {
+  const [identifier, setIdentifier] = useState('')
+  const [password,   setPassword]   = useState('')
+  const [showPw,     setShowPw]     = useState(false)
+  const [loading,    setLoading]    = useState(false)
+  const [error,      setError]      = useState('')
 
-  // Vars
-  const darkImg = '/images/pages/auth-mask-dark.png'
-  const lightImg = '/images/pages/auth-mask-light.png'
-  const darkIllustration = '/images/illustrations/auth/v2-login-dark.png'
-  const lightIllustration = '/images/illustrations/auth/v2-login-light.png'
-  const borderedDarkIllustration = '/images/illustrations/auth/v2-login-dark-border.png'
-  const borderedLightIllustration = '/images/illustrations/auth/v2-login-light-border.png'
-
-  // Hooks
   const router = useRouter()
   const { settings } = useSettings()
   const theme = useTheme()
   const hidden = useMediaQuery(theme.breakpoints.down('md'))
-  const authBackground = useImageVariant(mode, lightImg, darkImg)
 
-  const characterIllustration = useImageVariant(
-    mode,
-    lightIllustration,
-    darkIllustration,
-    borderedLightIllustration,
-    borderedDarkIllustration
-  )
+  const darkImg   = '/images/pages/auth-mask-dark.png'
+  const lightImg  = '/images/pages/auth-mask-light.png'
+  const darkIll   = '/images/illustrations/auth/v2-login-dark.png'
+  const lightIll  = '/images/illustrations/auth/v2-login-light.png'
+  const darkBord  = '/images/illustrations/auth/v2-login-dark-border.png'
+  const lightBord = '/images/illustrations/auth/v2-login-light-border.png'
 
-  const handleClickShowPassword = () => setIsPasswordShown(show => !show)
+  const authBackground      = useImageVariant(mode, lightImg,  darkImg)
+  const characterIllustration = useImageVariant(mode, lightIll, darkIll, lightBord, darkBord)
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!identifier.trim()) { setError('아이디 또는 이메일을 입력하세요.'); return }
+    if (!password.trim())   { setError('비밀번호를 입력하세요.'); return }
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const res = await fetch(`${BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password }),
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        // 401: 잘못된 자격증명, 403: user_type 불일치
+        if (res.status === 403) {
+          setError('공급사 계정이 아닙니다. SCM 포털은 공급사만 이용 가능합니다.')
+        } else {
+          setError(json.detail ?? '로그인에 실패했습니다. 아이디와 비밀번호를 확인해주세요.')
+        }
+        return
+      }
+
+      const data = json.data ?? json
+
+      // user_type 확인 — 004(공급사)만 허용
+      if (data.user_type && data.user_type !== '004') {
+        setError('공급사 계정이 아닙니다. SCM 포털은 공급사만 이용 가능합니다.')
+        return
+      }
+
+      // 토큰 저장
+      localStorage.setItem('access_token',  data.access_token  ?? data.token ?? '')
+      localStorage.setItem('refresh_token', data.refresh_token ?? '')
+      localStorage.setItem('user_type',     data.user_type     ?? '004')
+      localStorage.setItem('user_id',       data.user_id       ?? data.id ?? '')
+      localStorage.setItem('username',      data.username      ?? identifier)
+
+      // 대시보드로 이동
+      router.push('/dashboard')
+
+    } catch {
+      setError('네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className='flex bs-full justify-center'>
+      {/* 왼쪽 일러스트레이션 */}
       <div
         className={classnames(
           'flex bs-full items-center justify-center flex-1 min-bs-[100dvh] relative p-6 max-md:hidden',
-          {
-            'border-ie': settings.skin === 'bordered'
-          }
+          { 'border-ie': settings.skin === 'bordered' }
         )}
       >
-        <LoginIllustration src={characterIllustration} alt='character-illustration' />
-        {!hidden && (
-          <MaskImg
-            alt='mask'
-            src={authBackground}
-            className={classnames({ 'scale-x-[-1]': theme.direction === 'rtl' })}
-          />
-        )}
+        <LoginIllustration src={characterIllustration} alt='illustration' />
+        {!hidden && <MaskImg alt='mask' src={authBackground} />}
       </div>
+
+      {/* 오른쪽 폼 */}
       <div className='flex justify-center items-center bs-full bg-backgroundPaper !min-is-full p-6 md:!min-is-[unset] md:p-12 md:is-[480px]'>
         <Link className='absolute block-start-5 sm:block-start-[33px] inline-start-6 sm:inline-start-[38px]'>
           <Logo />
         </Link>
+
         <div className='flex flex-col gap-6 is-full sm:is-auto md:is-full sm:max-is-[400px] md:max-is-[unset] mbs-11 sm:mbs-14 md:mbs-0'>
           <div className='flex flex-col gap-1'>
-            <Typography variant='h4'>{`Welcome to ${themeConfig.templateName}! 👋🏻`}</Typography>
-            <Typography>Please sign-in to your account and start the adventure</Typography>
+            <Typography variant='h4'>KN541 SCM 포털 환영합니다 📦</Typography>
+            <Typography color='text.secondary'>공급사 계정으로 로그인하세요</Typography>
           </div>
-          <form
-            noValidate
-            autoComplete='off'
-            onSubmit={e => {
-              e.preventDefault()
-              router.push('/')
-            }}
-            className='flex flex-col gap-5'
-          >
-            <CustomTextField autoFocus fullWidth label='Email or Username' placeholder='Enter your email or username' />
+
+          {error && (
+            <Alert severity='error' onClose={() => setError('')}>{error}</Alert>
+          )}
+
+          <form noValidate autoComplete='off' onSubmit={handleLogin} className='flex flex-col gap-5'>
+            <CustomTextField
+              autoFocus
+              fullWidth
+              label='아이디 또는 이메일'
+              placeholder='아이디 또는 이메일 주소'
+              value={identifier}
+              onChange={e => setIdentifier(e.target.value)}
+              disabled={loading}
+            />
             <CustomTextField
               fullWidth
-              label='Password'
-              placeholder='············'
-              id='outlined-adornment-password'
-              type={isPasswordShown ? 'text' : 'password'}
+              label='비밀번호'
+              placeholder='비밀번호 입력'
+              type={showPw ? 'text' : 'password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              disabled={loading}
               slotProps={{
                 input: {
                   endAdornment: (
                     <InputAdornment position='end'>
-                      <IconButton edge='end' onClick={handleClickShowPassword} onMouseDown={e => e.preventDefault()}>
-                        <i className={isPasswordShown ? 'tabler-eye-off' : 'tabler-eye'} />
+                      <IconButton edge='end' onClick={() => setShowPw(v => !v)} onMouseDown={e => e.preventDefault()}>
+                        <i className={showPw ? 'tabler-eye-off' : 'tabler-eye'} />
                       </IconButton>
                     </InputAdornment>
-                  )
-                }
+                  ),
+                },
               }}
             />
-            <div className='flex justify-between items-center gap-x-3 gap-y-1 flex-wrap'>
-              <FormControlLabel control={<Checkbox />} label='Remember me' />
-              <Typography className='text-end' color='primary.main' component={Link}>
-                Forgot password?
-              </Typography>
-            </div>
-            <Button fullWidth variant='contained' type='submit'>
-              Login
+            <Button
+              fullWidth
+              variant='contained'
+              type='submit'
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={18} color='inherit' /> : undefined}
+            >
+              {loading ? '로그인 중…' : '로그인'}
             </Button>
-            <div className='flex justify-center items-center flex-wrap gap-2'>
-              <Typography>New on our platform?</Typography>
-              <Typography component={Link} color='primary.main'>
-                Create an account
-              </Typography>
-            </div>
-            <Divider className='gap-2 text-textPrimary'>or</Divider>
-            <div className='flex justify-center items-center gap-1.5'>
-              <IconButton className='text-facebook' size='small'>
-                <i className='tabler-brand-facebook-filled' />
-              </IconButton>
-              <IconButton className='text-twitter' size='small'>
-                <i className='tabler-brand-twitter-filled' />
-              </IconButton>
-              <IconButton className='text-textPrimary' size='small'>
-                <i className='tabler-brand-github-filled' />
-              </IconButton>
-              <IconButton className='text-error' size='small'>
-                <i className='tabler-brand-google-filled' />
-              </IconButton>
-            </div>
           </form>
+
+          <Typography variant='caption' color='text.disabled' align='center'>
+            {themeConfig.templateName} — 공급사 전용 포털
+          </Typography>
         </div>
       </div>
     </div>
   )
 }
-
-export default LoginV2
