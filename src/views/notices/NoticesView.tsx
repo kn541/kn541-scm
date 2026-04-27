@@ -1,7 +1,8 @@
 'use client'
 /**
  * KN541 SCM 공지사항
- * GET /scm/notices
+ * TASK 2: /scm/notices (없음) → /cs/notices 수정
+ * TASK 4: timeout 에러 처리 추가
  */
 import { useState, useEffect, useCallback } from 'react'
 import Box from '@mui/material/Box'
@@ -16,6 +17,7 @@ import Pagination from '@mui/material/Pagination'
 import Accordion from '@mui/material/Accordion'
 import AccordionSummary from '@mui/material/AccordionSummary'
 import AccordionDetails from '@mui/material/AccordionDetails'
+import Button from '@mui/material/Button'
 import { scmGet } from '@/lib/scmApi'
 
 interface Notice {
@@ -33,16 +35,18 @@ interface NoticesResponse {
 
 export default function NoticesView() {
   const [notices, setNotices] = useState<Notice[]>([])
-  const [total, setTotal]   = useState(0)
-  const [page, setPage]     = useState(1)
+  const [total, setTotal]     = useState(0)
+  const [page, setPage]       = useState(1)
   const [loading, setLoading] = useState(true)
-  const [error, setError]   = useState('')
+  const [error, setError]     = useState('')
   const SIZE = 20
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError('')
     try {
-      const res = await scmGet<NoticesResponse>(`/scm/notices?page=${page}&size=${SIZE}`)
+      // TASK 2: /scm/notices → /cs/notices (백엔드 SCM prefix 없음)
+      const res = await scmGet<NoticesResponse>(`/cs/notices?page=${page}&size=${SIZE}`)
       setNotices(res.items ?? [])
       setTotal(res.total ?? 0)
     } catch (e) {
@@ -59,7 +63,17 @@ export default function NoticesView() {
       <CircularProgress />
     </Box>
   )
-  if (error) return <Alert severity='error'>{error}</Alert>
+
+  if (error) return (
+    <Box>
+      <Typography variant='h5' fontWeight={700} sx={{ mb: 3 }}>공지사항</Typography>
+      <Alert severity='warning' action={
+        <Button size='small' onClick={load}>다시 시도</Button>
+      }>
+        {error}
+      </Alert>
+    </Box>
+  )
 
   return (
     <Box>
@@ -87,7 +101,7 @@ export default function NoticesView() {
                         {n.title}
                       </Typography>
                       <Typography variant='caption' color='text.disabled' sx={{ flexShrink: 0 }}>
-                        {n.created_at.slice(0, 10)}
+                        {n.created_at?.slice(0, 10)}
                       </Typography>
                     </Box>
                   </AccordionSummary>
