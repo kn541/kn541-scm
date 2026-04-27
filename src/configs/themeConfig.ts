@@ -34,25 +34,25 @@ export type Config = {
 const themeConfig: Config = {
   templateName: 'KN541 SCM',
   homePageUrl: '/dashboard',
-  settingsCookieName: 'kn541-scm-v1',       // 쿠키 이름 변경 → 기존 vertical 쿠키 무효화
+  settingsCookieName: 'kn541-scm-v2',       // v2: 예전 horizontal 쿠키 무효화
   mode: 'light',                             // 'system', 'light', 'dark'
   skin: 'default',                           // 'default', 'bordered'
   semiDark: false,
-  layout: 'horizontal',                      // ← 탑바 수평 레이아웃
+  layout: 'vertical',                        // SCM: 사이드바(수직) 기본
   layoutPadding: 24,
   compactContentWidth: 1440,
   navbar: {
     type: 'fixed',
     contentWidth: 'compact',
-    floating: false,                          // horizontal 에서는 false 필수
-    detached: false,                          // horizontal 에서는 false 필수
+    floating: true,
+    detached: true,
     blur: true
   },
   contentWidth: 'compact',
   footer: {
     type: 'static',
     contentWidth: 'compact',
-    detached: false                           // horizontal 에서는 false 필수
+    detached: true
   },
   disableRipple: false
 }

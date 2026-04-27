@@ -25,6 +25,7 @@ const Layout = async (props: ChildrenType) => {
     <Providers direction={direction}>
       <AuthGuard>
         <LayoutWrapper
+          forceVertical
           systemMode={systemMode}
           verticalLayout={
             <VerticalLayout navigation={<Navigation mode={mode} />} navbar={<Navbar />} footer={<VerticalFooter />}>

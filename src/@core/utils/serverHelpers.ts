@@ -16,7 +16,10 @@ export const getSettingsFromCookie = async (): Promise<Settings> => {
 
   const cookieName = themeConfig.settingsCookieName
 
-  return JSON.parse(cookieStore.get(cookieName)?.value || '{}')
+  const parsed = JSON.parse(cookieStore.get(cookieName)?.value || '{}') as Settings
+
+  // KN541 SCM: 대시보드는 수직(사이드바) 고정 — 쿠키에 horizontal이 있어도 무시
+  return { ...parsed, layout: 'vertical' }
 }
 
 export const getMode = async () => {
