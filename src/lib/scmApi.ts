@@ -1,5 +1,7 @@
 // KN541 SCM API 공통 헬퍼
-// ※ fly.dev → Railway 이전 완료 (2026-04-21)
+// 수정: 2026-04-28
+//   - scmGet: 10초 timeout + AbortController 추가 (TASK 4)
+//   - publicGet: 인증 없는 공개 API 전용 (공지사항 등)
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'https://kn541-production.up.railway.app'
 
 export function authHeaders(): Record<string, string> {
@@ -7,32 +9,89 @@ export function authHeaders(): Record<string, string> {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
 }
 
-export async function scmGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { headers: authHeaders() })
-  if (res.status === 401) { window.location.href = '/login'; throw new Error('401') }
-  const json = await res.json()
-  if (!res.ok) throw new Error(json.detail ?? '요청 실패')
-  return json.data as T
+/** 인증 필요 GET — 10초 timeout, 401 시 로그인 리다이렉트 */
+export async function scmGet<T>(path: string, timeoutMs = 10000): Promise<T> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: authHeaders(),
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    if (res.status === 401) { window.location.href = '/login'; throw new Error('401') }
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.detail ?? '요청 실패')
+    return json.data as T
+  } catch (e: any) {
+    clearTimeout(timer)
+    if (e.name === 'AbortError') throw new Error('요청 시간이 초과됐습니다. 잠시 후 다시 시도해 주세요.')
+    throw e
+  }
+}
+
+/** 공개 API GET — 인증 필요 없음 (공지사항, 약관 등) */
+export async function publicGet<T>(path: string, timeoutMs = 10000): Promise<T> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.detail ?? '요청 실패')
+    return json.data as T
+  } catch (e: any) {
+    clearTimeout(timer)
+    if (e.name === 'AbortError') throw new Error('요청 시간이 초과됐습니다.')
+    throw e
+  }
 }
 
 export async function scmPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'POST', headers: authHeaders(), body: JSON.stringify(body)
-  })
-  if (res.status === 401) { window.location.href = '/login'; throw new Error('401') }
-  const json = await res.json()
-  if (!res.ok) throw new Error(json.detail ?? '요청 실패')
-  return json.data as T
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    if (res.status === 401) { window.location.href = '/login'; throw new Error('401') }
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.detail ?? '요청 실패')
+    return json.data as T
+  } catch (e: any) {
+    clearTimeout(timer)
+    if (e.name === 'AbortError') throw new Error('요청 시간이 초과됐습니다.')
+    throw e
+  }
 }
 
 export async function scmPatch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'PATCH', headers: authHeaders(), body: JSON.stringify(body)
-  })
-  if (res.status === 401) { window.location.href = '/login'; throw new Error('401') }
-  const json = await res.json()
-  if (!res.ok) throw new Error(json.detail ?? '요청 실패')
-  return json.data as T
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    if (res.status === 401) { window.location.href = '/login'; throw new Error('401') }
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.detail ?? '요청 실패')
+    return json.data as T
+  } catch (e: any) {
+    clearTimeout(timer)
+    if (e.name === 'AbortError') throw new Error('요청 시간이 초과됐습니다.')
+    throw e
+  }
 }
 
 export function fmtMoney(n: number | null | undefined): string {
