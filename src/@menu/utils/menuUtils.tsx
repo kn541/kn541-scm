@@ -111,6 +111,10 @@ const processMenuChildren = (children: ReactNode, mapFunction: (child: ReactNode
  */
 export const mapHorizontalToVerticalMenu = (children: ReactNode): ReactNode => {
   return Children.map(children, child => {
+    if (!child) {
+      return null
+    }
+
     // If the child is not a valid React element, exclude it from the output
     if (
       !isValidElement<{ children?: ReactNode; verticalMenuProps?: Record<string, unknown>; [key: string]: unknown }>(
@@ -119,7 +123,7 @@ export const mapHorizontalToVerticalMenu = (children: ReactNode): ReactNode => {
     )
       return null
 
-    // 방어: child.type 또는 child.props가 undefined인 경우 (RSC 직렬화)
+    // 방어: child.type 또는 child.props가 undefined인 경우 (RSC 직렬화 / React 19)
     if (!child.type || !child.props) return child
 
     // Destructure to separate specific props and rest props for further use
