@@ -196,10 +196,8 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
 
   // ── 대분류 로드 ───────────────────────────
   useEffect(() => {
-    const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'https://kn541-production.up.railway.app'
-    fetch(`${BASE}/categories?parent_id=null&size=100`)
-      .then(r => r.json())
-      .then(j => setCats1(j.data?.items ?? j.data ?? []))
+    void publicGet<{ items?: Category[] }>('/categories?parent_id=null&size=100')
+      .then(d => setCats1(d.items ?? []))
       .catch(() => setCats1([]))
 
     // 공급사명 조회
@@ -211,10 +209,8 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   // ── 중분류 로드 ───────────────────────────
   useEffect(() => {
     if (!sel1) { setCats2([]); setCats3([]); setSel2(''); setForm(f => ({ ...f, category_id: '' })); return }
-    const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'https://kn541-production.up.railway.app'
-    fetch(`${BASE}/categories?parent_id=${sel1}&size=100`)
-      .then(r => r.json())
-      .then(j => setCats2(j.data?.items ?? j.data ?? []))
+    void publicGet<{ items?: Category[] }>(`/categories?parent_id=${encodeURIComponent(sel1)}&size=100`)
+      .then(d => setCats2(d.items ?? []))
       .catch(() => setCats2([]))
     setCats3([]); setSel2(''); setForm(f => ({ ...f, category_id: '' }))
   }, [sel1])
@@ -222,11 +218,9 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   // ── 소분류 로드 ───────────────────────────
   useEffect(() => {
     if (!sel2) { setCats3([]); setForm(f => ({ ...f, category_id: '' })); return }
-    const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'https://kn541-production.up.railway.app'
-    fetch(`${BASE}/categories?parent_id=${sel2}&size=100`)
-      .then(r => r.json())
-      .then(j => {
-        const items: Category[] = j.data?.items ?? j.data ?? []
+    void publicGet<{ items?: Category[] }>(`/categories?parent_id=${encodeURIComponent(sel2)}&size=100`)
+      .then(d => {
+        const items: Category[] = d.items ?? []
         setCats3(items)
         // 소분류가 없으면 중분류 자체를 category_id로
         if (items.length === 0) setForm(f => ({ ...f, category_id: sel2 }))

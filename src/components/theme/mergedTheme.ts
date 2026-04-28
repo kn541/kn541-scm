@@ -6,10 +6,8 @@
  * Export this file and import it in the `@components/theme/index.tsx` file to use the merged theme.
  */
 
-// Third-party Imports
-import deepmerge from 'deepmerge'
-
 // MUI Imports
+import { deepmerge } from '@mui/utils'
 import type { Theme } from '@mui/material/styles'
 
 // Type Imports
