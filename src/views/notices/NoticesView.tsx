@@ -1,8 +1,7 @@
 'use client'
 /**
  * KN541 SCM 공지사항
- * TASK 2: /scm/notices (없음) → /cs/notices 수정
- * TASK 4: timeout 에러 처리 추가
+ * FIX: /cs/notices → /scm/notices (백엔드 실제 경로)
  */
 import { useState, useEffect, useCallback } from 'react'
 import Box from '@mui/material/Box'
@@ -45,8 +44,8 @@ export default function NoticesView() {
     setLoading(true)
     setError('')
     try {
-      // TASK 2: /scm/notices → /cs/notices (백엔드 SCM prefix 없음)
-      const res = await scmGet<NoticesResponse>(`/cs/notices?page=${page}&size=${SIZE}`)
+      // FIX: /cs/notices → /scm/notices (백엔드 실제 경로)
+      const res = await scmGet<NoticesResponse>(`/scm/notices?page=${page}&size=${SIZE}`)
       setNotices(res.items ?? [])
       setTotal(res.total ?? 0)
     } catch (e) {
