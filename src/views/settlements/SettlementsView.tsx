@@ -1,8 +1,7 @@
 'use client'
 /**
  * KN541 SCM 정산 관리
- * GET /scm/settlements       — 목록
- * GET /scm/settlements/:id   — 상세 (조회 전용)
+ * GET /scm/settlements — 목록 (supplier_settlements 원본 → scmSettlementMap)
  */
 import { useState, useEffect, useCallback } from 'react'
 import Box from '@mui/material/Box'
@@ -24,19 +23,9 @@ import MenuItem from '@mui/material/MenuItem'
 import CustomTextField from '@core/components/mui/TextField'
 import tableStyles from '@core/styles/table.module.css'
 import { scmGet, fmtMoney, fmtDate } from '@/lib/scmApi'
+import { mapSupplierSettlementRow, type SettlementUi } from '@/lib/scmSettlementMap'
 
-interface Settlement {
-  settlement_id:     string
-  settlement_no:     string
-  period_from:       string
-  period_to:         string
-  gross_amount:      number
-  commission_amount: number
-  net_amount:        number
-  status:            string
-  paid_at:           string | null
-  created_at:        string
-}
+type Settlement = SettlementUi
 
 interface SettlementDetail extends Settlement {
   items?: Array<{
@@ -48,10 +37,14 @@ interface SettlementDetail extends Settlement {
   }>
 }
 
+/** supplier_settlements.status (백엔드 VALID_STATUSES) */
 const STATUS_MAP: Record<string, { label: string; color: 'default'|'warning'|'success'|'info' }> = {
-  PENDING:   { label: '정산예정', color: 'warning' },
-  CONFIRMED: { label: '확정',     color: 'info'    },
-  PAID:      { label: '지급완료', color: 'success' },
+  BEFORE:     { label: '정산전',   color: 'default' },
+  PROCESSING: { label: '처리중',   color: 'info'    },
+  COMPLETED:  { label: '확정',     color: 'info'    },
+  INVOICED:   { label: '세금계산서', color: 'warning' },
+  PAID:       { label: '지급완료', color: 'success' },
+  ON_HOLD:    { label: '보류',     color: 'warning' },
 }
 
 export default function SettlementsView() {
@@ -64,15 +57,15 @@ export default function SettlementsView() {
 
   const [detail,       setDetail]       = useState<SettlementDetail | null>(null)
   const [detailOpen,   setDetailOpen]   = useState(false)
-  const [detailLoading,setDetailLoading]= useState(false)
 
   const load = useCallback(async (pg = 0, s = status) => {
     setLoading(true); setError('')
     try {
       const qs = new URLSearchParams({ page: String(pg + 1), size: '20' })
       if (s) qs.set('status', s)
-      const data = await scmGet<{ items: Settlement[]; total: number }>(`/scm/settlements?${qs}`)
-      setRows(data.items ?? []); setTotal(data.total ?? 0)
+      const data = await scmGet<{ items: Record<string, unknown>[]; total: number }>(`/scm/settlements?${qs}`)
+      setRows((data.items ?? []).map(r => mapSupplierSettlementRow(r)))
+      setTotal(data.total ?? 0)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : '데이터를 불러올 수 없습니다.')
     } finally { setLoading(false) }
@@ -80,13 +73,11 @@ export default function SettlementsView() {
 
   useEffect(() => { void load(0) }, [load])
 
-  const openDetail = async (id: string) => {
-    setDetailOpen(true); setDetail(null); setDetailLoading(true)
-    try {
-      const data = await scmGet<SettlementDetail>(`/scm/settlements/${id}`)
-      setDetail(data)
-    } catch { setDetail(null) }
-    finally { setDetailLoading(false) }
+  /** SCM 라우터에 상세 GET 없음 — 목록 행으로 요약 표시 */
+  const openDetail = (id: string) => {
+    const row = rows.find(r => r.settlement_id === id)
+    setDetailOpen(true)
+    setDetail(row ? { ...row, items: [] } : null)
   }
 
   const fmtPeriod = (s: Settlement) =>
@@ -174,7 +165,7 @@ export default function SettlementsView() {
                       </td>
                       <td>
                         <Button size='small' variant='outlined'
-                          onClick={() => void openDetail(s.settlement_id)}>
+                          onClick={() => openDetail(s.settlement_id)}>
                           상세
                         </Button>
                       </td>
@@ -195,11 +186,7 @@ export default function SettlementsView() {
       <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} maxWidth='sm' fullWidth>
         <DialogTitle>정산 상세 — {detail?.settlement_no ?? '로딩 중'}</DialogTitle>
         <DialogContent dividers>
-          {detailLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress size={28} />
-            </Box>
-          ) : detail ? (
+          {detail ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               <InfoRow label='정산기간'  value={fmtPeriod(detail)} />
               <InfoRow label='매출합계'  value={fmtMoney(detail.gross_amount)} />

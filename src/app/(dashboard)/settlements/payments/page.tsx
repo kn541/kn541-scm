@@ -1,7 +1,7 @@
 'use client'
 /**
- * KN541 SCM 입금 확인 페이지 (TASK 6)
- * GET /scm/settlements?status=PAID
+ * KN541 SCM 입금 확인
+ * GET /scm/settlements?status=PAID — supplier_settlements 행 필드 통일 (SettlementUi)
  */
 import { useState, useEffect, useCallback } from 'react'
 import Box from '@mui/material/Box'
@@ -18,26 +18,15 @@ import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Pagination from '@mui/material/Pagination'
 import { scmGet, fmtMoney, fmtDate } from '@/lib/scmApi'
-
-interface Settlement {
-  id: string
-  settlement_number: string
-  period_start: string
-  period_end: string
-  total_sales: number
-  commission_amount: number
-  settlement_amount: number
-  status: string
-  paid_at: string | null
-}
+import { mapSupplierSettlementRow, type SettlementUi } from '@/lib/scmSettlementMap'
 
 interface SettlementsResponse {
-  items: Settlement[]
+  items: Record<string, unknown>[]
   total: number
 }
 
 export default function PaymentsPage() {
-  const [items, setItems]     = useState<Settlement[]>([])
+  const [items, setItems]     = useState<SettlementUi[]>([])
   const [total, setTotal]     = useState(0)
   const [page, setPage]       = useState(1)
   const [loading, setLoading] = useState(true)
@@ -51,7 +40,7 @@ export default function PaymentsPage() {
       const res = await scmGet<SettlementsResponse>(
         `/scm/settlements?status=PAID&page=${page}&size=${SIZE}`
       )
-      setItems(res.items ?? [])
+      setItems((res.items ?? []).map(r => mapSupplierSettlementRow(r)))
       setTotal(res.total ?? 0)
     } catch (e) {
       setError((e as Error).message)
@@ -60,7 +49,7 @@ export default function PaymentsPage() {
     }
   }, [page])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { void load() }, [load])
 
   return (
     <Box>
@@ -68,7 +57,7 @@ export default function PaymentsPage() {
 
       {error && (
         <Alert severity='warning' sx={{ mb: 2 }} action={
-          <Button size='small' onClick={load}>다시 시도</Button>
+          <Button size='small' onClick={() => void load()}>다시 시도</Button>
         }>{error}</Alert>
       )}
 
@@ -96,24 +85,24 @@ export default function PaymentsPage() {
             </TableHead>
             <TableBody>
               {items.map(s => (
-                <TableRow key={s.id} hover>
+                <TableRow key={s.settlement_id} hover>
                   <TableCell>
-                    <Typography variant='caption' fontFamily='monospace'>{s.settlement_number}</Typography>
+                    <Typography variant='caption' fontFamily='monospace'>{s.settlement_no}</Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant='body2'>
-                      {fmtDate(s.period_start)} ~ {fmtDate(s.period_end)}
+                      {fmtDate(s.period_from)} ~ {fmtDate(s.period_to)}
                     </Typography>
                   </TableCell>
-                  <TableCell align='right'>{fmtMoney(s.total_sales)}</TableCell>
+                  <TableCell align='right'>{fmtMoney(s.gross_amount)}</TableCell>
                   <TableCell align='right'>{fmtMoney(s.commission_amount)}</TableCell>
                   <TableCell align='right'>
                     <Typography fontWeight={700} color='primary.main'>
-                      {fmtMoney(s.settlement_amount)}
+                      {fmtMoney(s.net_amount)}
                     </Typography>
                   </TableCell>
                   <TableCell align='center'>
-                    <Chip label='입금완료' size='small' color='success' />
+                    <Chip label='지급완료' size='small' color='success' />
                   </TableCell>
                   <TableCell>{fmtDate(s.paid_at)}</TableCell>
                 </TableRow>
