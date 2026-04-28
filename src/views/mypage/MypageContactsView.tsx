@@ -2,6 +2,7 @@
 /**
  * KN541 SCM 담당자 관리
  * GET/PATCH /scm/contacts
+ * FIX: 404 에러 시 "서비스 준비 중" 메시지 표시
  */
 import { useState, useEffect } from 'react'
 import Box from '@mui/material/Box'
@@ -60,7 +61,22 @@ export default function MypageContactsView() {
   }
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress /></Box>
-  if (error)   return <Alert severity='error'>{error}</Alert>
+
+  // FIX: 404/에러 시 사용자 친화적 메시지
+  if (error) return (
+    <Box>
+      <Typography variant='h5' fontWeight={700} sx={{ mb: 3 }}>담당자 관리</Typography>
+      <Card>
+        <CardContent sx={{ textAlign: 'center', py: 8 }}>
+          <i className='tabler-users' style={{ fontSize: 48, color: 'var(--mui-palette-text-disabled)', marginBottom: 16 }} />
+          <Typography variant='h6' fontWeight={600} sx={{ mb: 1 }}>서비스 준비 중입니다</Typography>
+          <Typography variant='body2' color='text.secondary'>
+            담당자 관리 기능을 준비하고 있습니다.<br />빠른 시일 내에 오픈될 예정입니다.
+          </Typography>
+        </CardContent>
+      </Card>
+    </Box>
+  )
 
   return (
     <Box>
