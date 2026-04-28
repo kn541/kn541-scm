@@ -1,5 +1,5 @@
 // React Imports
-import { Children, isValidElement } from 'react'
+import { Children, Fragment, isValidElement } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
 // Third-party Imports
@@ -53,12 +53,9 @@ export const confirmUrlInChildren = (children: ChildrenType['children'], url: st
   }
 
   if (isValidElement<MenuItemElementProps>(children)) {
-    // 방어: props가 없을 수 있음 (RSC 직렬화 환경)
-    if (!children.props) return false
-
     const { component, href, exactMatch, activeUrl, children: subChildren } = children.props
 
-    if (component && typeof component !== 'string' && component.props?.href) {
+    if (component && typeof component !== 'string' && component.props.href) {
       return exactMatch === true || exactMatch === undefined
         ? component.props.href === url
         : activeUrl !== undefined && url.includes(activeUrl)
@@ -88,16 +85,18 @@ export const confirmUrlInChildren = (children: ChildrenType['children'], url: st
 /**
  * Processes children of a HorizontalMenu component to either generate a vertical menu directly
  * from menuData or apply a transformation function to each child.
+ *
+ * @param {ReactNode} children - The children of the HorizontalMenu component.
+ * @param {Function} mapFunction - A function to transform each child that doesn't have menuData.
+ * @returns {ReactNode} The processed children suitable for inclusion in a VerticalMenu.
  */
 const processMenuChildren = (children: ReactNode, mapFunction: (child: ReactNode) => ReactNode): ReactNode => {
   return Children.map(children, child => {
     // Skip processing for non-React elements
     if (!isValidElement<{ menuData?: unknown[] }>(child)) return child
 
-    // 방어: props가 없을 수 있음
-    if (!child.props) return child
-
     // If child has menuData prop, create a GenerateVerticalMenu component
+    // Otherwise, apply the transformation function to the child
     return child.props.menuData ? <GenerateVerticalMenu menuData={child.props.menuData as never} /> : mapFunction(child)
   })
 }
@@ -106,15 +105,11 @@ const processMenuChildren = (children: ReactNode, mapFunction: (child: ReactNode
  * Transforms a hierarchy of horizontal menu components (HorizontalMenuItem,
  * HorizontalSubMenu, and HorizontalMenu) into their vertical equivalents.
  *
- * [수정 2026-04-28] React 19 + Next.js 16 RSC 직렬화 환경에서
- * child.type이 undefined인 경우 방어 코드 추가
+ * @param {ReactNode} children - The children of the menu to be transformed.
+ * @returns {ReactNode} The transformed menu as a hierarchy of vertical menu components.
  */
 export const mapHorizontalToVerticalMenu = (children: ReactNode): ReactNode => {
   return Children.map(children, child => {
-    if (!child) {
-      return null
-    }
-
     // If the child is not a valid React element, exclude it from the output
     if (
       !isValidElement<{ children?: ReactNode; verticalMenuProps?: Record<string, unknown>; [key: string]: unknown }>(
@@ -122,9 +117,6 @@ export const mapHorizontalToVerticalMenu = (children: ReactNode): ReactNode => {
       )
     )
       return null
-
-    // 방어: child.type 또는 child.props가 undefined인 경우 (RSC 직렬화 / React 19)
-    if (!child.type || !child.props) return child
 
     // Destructure to separate specific props and rest props for further use
     const { children: childChildren, verticalMenuProps, ...rest } = child.props
@@ -136,6 +128,7 @@ export const mapHorizontalToVerticalMenu = (children: ReactNode): ReactNode => {
         return <VerticalMenuItem {...rest}>{childChildren}</VerticalMenuItem>
       case HorizontalSubMenu:
         // Transform HorizontalSubMenu to VerticalSubMenu, recursively transforming its children
+        // The rest props from HorizontalSubMenu include all required VerticalSubMenu props like label
         return (
           <VerticalSubMenu {...(rest as unknown as Parameters<typeof VerticalSubMenu>[0])}>
             {mapHorizontalToVerticalMenu(childChildren)}
@@ -147,7 +140,10 @@ export const mapHorizontalToVerticalMenu = (children: ReactNode): ReactNode => {
 
         return <VerticalMenu {...(verticalMenuProps || {})}>{transformedChildren}</VerticalMenu>
       default:
-        // For any other type of child, return it without modification
+        // GenerateHorizontalMenu 이 Fragment 로 감싼 경우 세로 드로어에서 링크가 동작하지 않음 → 재귀 변환
+        if (isValidElement(child) && child.type === Fragment) {
+          return mapHorizontalToVerticalMenu((child.props as { children?: ReactNode }).children)
+        }
         return child
     }
   })

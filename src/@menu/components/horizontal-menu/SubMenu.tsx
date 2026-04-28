@@ -148,7 +148,6 @@ const SubMenu: ForwardRefRenderFunction<HTMLLIElement, SubMenuProps> = (props, r
   const [active, setActive] = useState(false)
 
   // Refs
-  const dir = useRef('ltr')
   const listItemsRef = useRef<Array<HTMLButtonElement | null>>([])
 
   // Hooks
@@ -184,22 +183,24 @@ const SubMenu: ForwardRefRenderFunction<HTMLLIElement, SubMenuProps> = (props, r
       ? popoutMenuOffset.alignmentAxis({ level })
       : popoutMenuOffset.alignmentAxis)
 
-  useEffect(() => {
-    dir.current = window.getComputedStyle(document.documentElement).getPropertyValue('direction')
-  }, [])
-
   const { y, refs, floatingStyles, context } = useFloating({
     open,
     nodeId,
     onOpenChange: setOpen,
-    placement: level > 0 ? (dir.current !== 'rtl' ? 'right-start' : 'left-start') : 'bottom-start',
+    placement: level > 0 ? 'right-start' : 'bottom-start',
     middleware: [
       offset({
         mainAxis: mainAxisOffset,
         alignmentAxis: alignmentAxisOffset
       }),
-      flip({ crossAxis: false }),
-      shift()
+      flip({
+        crossAxis: false,
+        fallbackPlacements: level > 0
+          ? ['left-start', 'right-end', 'left-end']
+          : ['bottom-end', 'top-start', 'top-end'],
+        padding: 16
+      }),
+      shift({ padding: 8 })
     ],
     whileElementsMounted: autoUpdate
   })
