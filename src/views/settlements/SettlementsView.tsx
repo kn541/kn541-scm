@@ -24,6 +24,7 @@ import CustomTextField from '@core/components/mui/TextField'
 import tableStyles from '@core/styles/table.module.css'
 import { scmGet, fmtMoney, fmtDate } from '@/lib/scmApi'
 import { mapSupplierSettlementRow, type SettlementUi } from '@/lib/scmSettlementMap'
+import ExcelDownBtn from '@/components/excel/ExcelDownBtn'
 
 type Settlement = SettlementUi
 
@@ -92,9 +93,16 @@ export default function SettlementsView() {
           title='정산 목록'
           subheader='정산 내역은 조회만 가능합니다.'
           action={
-            loading
-              ? <CircularProgress size={16} />
-              : <Chip label={`총 ${total.toLocaleString()}건`} size='small' color='primary' variant='outlined' sx={{ fontWeight: 600 }} />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ExcelDownBtn
+                entity='scm_settlements'
+                label='정산 다운로드'
+                filters={{ status: status || undefined }}
+              />
+              {loading
+                ? <CircularProgress size={16} />
+                : <Chip label={`총 ${total.toLocaleString()}건`} size='small' color='primary' variant='outlined' sx={{ fontWeight: 600 }} />}
+            </Box>
           }
         />
 

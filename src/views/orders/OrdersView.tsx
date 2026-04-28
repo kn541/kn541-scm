@@ -24,6 +24,7 @@ import Tooltip from '@mui/material/Tooltip'
 import CustomTextField from '@core/components/mui/TextField'
 import tableStyles from '@core/styles/table.module.css'
 import { scmGet, scmPost, fmtMoney, fmtDate } from '@/lib/scmApi'
+import ExcelDownBtn from '@/components/excel/ExcelDownBtn'
 
 interface ScmOrder {
   order_id:         string
@@ -135,9 +136,20 @@ export default function OrdersView() {
         <CardHeader
           title='주문 목록'
           action={
-            loading
-              ? <CircularProgress size={16} />
-              : <Chip label={`총 ${total.toLocaleString()}건`} size='small' color='primary' variant='outlined' sx={{ fontWeight: 600 }} />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ExcelDownBtn
+                entity='scm_orders'
+                label='주문 다운로드'
+                filters={{
+                  order_status: statusFilter || undefined,
+                  keyword: keyword.trim() || undefined,
+                  search_type: searchType || undefined,
+                }}
+              />
+              {loading
+                ? <CircularProgress size={16} />
+                : <Chip label={`총 ${total.toLocaleString()}건`} size='small' color='primary' variant='outlined' sx={{ fontWeight: 600 }} />}
+            </Box>
           }
         />
 

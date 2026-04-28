@@ -24,6 +24,7 @@ import Tooltip from '@mui/material/Tooltip'
 import CustomTextField from '@core/components/mui/TextField'
 import tableStyles from '@core/styles/table.module.css'
 import { scmGet, fmtMoney, fmtDate } from '@/lib/scmApi'
+import ExcelDownBtn from '@/components/excel/ExcelDownBtn'
 
 interface ScmProduct {
   product_id:     string
@@ -109,9 +110,19 @@ export default function ProductsView() {
         <CardHeader
           title='상품 목록'
           action={
-            loading
-              ? <CircularProgress size={16} />
-              : <Chip label={`총 ${total.toLocaleString()}개`} size='small' color='primary' variant='outlined' sx={{ fontWeight: 600 }} />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ExcelDownBtn
+                entity='scm_products'
+                label='상품 다운로드'
+                filters={{
+                  status: tab || undefined,
+                  keyword: keyword.trim() || undefined,
+                }}
+              />
+              {loading
+                ? <CircularProgress size={16} />
+                : <Chip label={`총 ${total.toLocaleString()}개`} size='small' color='primary' variant='outlined' sx={{ fontWeight: 600 }} />}
+            </Box>
           }
         />
 

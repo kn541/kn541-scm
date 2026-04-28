@@ -4,6 +4,9 @@
 //   - publicGet: 인증 없는 공개 API 전용 (공지사항 등)
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'https://kn541-production.up.railway.app'
 
+/** 엑셀 다운로드 등 비 JSON 응답용 */
+export const SCM_API_BASE = BASE
+
 export function authHeaders(): Record<string, string> {
   const token = typeof window !== 'undefined' ? (localStorage.getItem('access_token') ?? '') : ''
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
