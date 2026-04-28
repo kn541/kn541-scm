@@ -1,8 +1,8 @@
 'use client'
 /**
- * KN541 SCM 배송 처리 페이지 (TASK 5)
- * GET /scm/orders?shipping_status=READY
- * PATCH /scm/orders/{order_id}/ship
+ * KN541 SCM 배송 처리
+ * GET  /scm/orders — order_items 행 목록 (백엔드 스펙)
+ * POST /scm/orders/{order_id}/ship — 송장 등록 (tracking_company, tracking_no)
  */
 import { useState, useEffect, useCallback } from 'react'
 import Box from '@mui/material/Box'
@@ -24,21 +24,55 @@ import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
 import Chip from '@mui/material/Chip'
 import Pagination from '@mui/material/Pagination'
-import { scmGet, scmPatch, fmtDate } from '@/lib/scmApi'
+import { scmGet, scmPost, fmtDate, fmtMoney } from '@/lib/scmApi'
 
-interface Order {
+/** /scm/orders 한 행 = order_items 레코드 (OrdersView ScmOrder 집계와 다를 수 있음) */
+interface ScmOrderItemRow {
   id: string
-  order_number: string
-  product_name: string
-  buyer_name: string
-  qty: number
-  ordered_at: string
-  shipping_status: string
+  order_id: string
+  order_no?: string | null
+  product_name?: string | null
+  quantity?: number
+  item_total?: number
+  delivery_status?: string | null
+  tracking_company?: string | null
+  tracking_no?: string | null
+  created_at?: string | null
+  member_name?: string | null
 }
 
-interface OrdersResponse {
-  items: Order[]
-  total: number
+/** 화면 표시용 — OrdersView 필드명에 맞춤 */
+interface ShippingRow {
+  order_id: string
+  order_no: string
+  member_name: string | null
+  product_summary: string | null
+  /** 라인 수량 (주문 목록에 quantity 컬럼 대응) */
+  line_qty: number
+  total_amount: number
+  order_status: string
+  created_at: string
+  line_id: string
+}
+
+function needsShipping(row: ScmOrderItemRow): boolean {
+  const ds = String(row.delivery_status ?? '').toUpperCase()
+  if (['SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUND_COMPLETED'].includes(ds)) return false
+  return true
+}
+
+function toShippingRow(r: ScmOrderItemRow): ShippingRow {
+  return {
+    order_id: String(r.order_id ?? ''),
+    order_no: String(r.order_no ?? r.order_id ?? ''),
+    member_name: r.member_name ?? null,
+    product_summary: r.product_name ?? null,
+    line_qty: Number(r.quantity ?? 0),
+    total_amount: Number(r.item_total ?? 0),
+    order_status: String(r.delivery_status ?? '-'),
+    created_at: String(r.created_at ?? ''),
+    line_id: String(r.id ?? ''),
+  }
 }
 
 const CARRIERS = [
@@ -51,41 +85,45 @@ const CARRIERS = [
 ]
 
 export default function ShippingPage() {
-  const [orders, setOrders]   = useState<Order[]>([])
-  const [total, setTotal]     = useState(0)
-  const [page, setPage]       = useState(1)
+  const [rows, setRows] = useState<ShippingRow[]>([])
+  const [totalRaw, setTotalRaw] = useState(0)
+  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState('')
+  const [error, setError] = useState('')
 
-  // 배송 입력 다이얼로그
-  const [open, setOpen]           = useState(false)
-  const [selected, setSelected]   = useState<Order | null>(null)
-  const [carrier, setCarrier]     = useState('CJ대한통운')
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState<ShippingRow | null>(null)
+  const [carrier, setCarrier] = useState('CJ대한통운')
   const [trackingNo, setTrackingNo] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitErr, setSubmitErr] = useState('')
-  const SIZE = 20
+  const SIZE = 50
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const res = await scmGet<OrdersResponse>(
-        `/scm/orders?shipping_status=READY&page=${page}&size=${SIZE}`
+      const res = await scmGet<{ items: ScmOrderItemRow[]; total: number }>(
+        `/scm/orders?page=${page}&size=${SIZE}`
       )
-      setOrders(res.items ?? [])
-      setTotal(res.total ?? 0)
+      const raw = res.items ?? []
+      setTotalRaw(res.total ?? raw.length)
+      const mapped = raw.filter(needsShipping).map(toShippingRow)
+      setRows(mapped)
     } catch (e) {
       setError((e as Error).message)
+      setRows([])
     } finally {
       setLoading(false)
     }
   }, [page])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    void load()
+  }, [load])
 
-  const openDialog = (order: Order) => {
-    setSelected(order)
+  const openDialog = (row: ShippingRow) => {
+    setSelected(row)
     setCarrier('CJ대한통운')
     setTrackingNo('')
     setSubmitErr('')
@@ -94,16 +132,19 @@ export default function ShippingPage() {
 
   const handleShip = async () => {
     if (!selected) return
-    if (!trackingNo.trim()) { setSubmitErr('운송장 번호를 입력해 주세요.'); return }
+    if (!trackingNo.trim()) {
+      setSubmitErr('운송장 번호를 입력해 주세요.')
+      return
+    }
     setSubmitting(true)
     setSubmitErr('')
     try {
-      await scmPatch(`/scm/orders/${selected.id}/ship`, {
-        tracking_number: trackingNo.trim(),
-        carrier_name: carrier,
+      await scmPost(`/scm/orders/${encodeURIComponent(selected.order_id)}/ship`, {
+        tracking_company: carrier,
+        tracking_no: trackingNo.trim(),
       })
       setOpen(false)
-      load()
+      void load()
     } catch (e) {
       setSubmitErr((e as Error).message)
     } finally {
@@ -113,12 +154,22 @@ export default function ShippingPage() {
 
   return (
     <Box>
-      <Typography variant='h5' fontWeight={700} sx={{ mb: 3 }}>배송 처리</Typography>
+      <Typography variant='h5' fontWeight={700} sx={{ mb: 3 }}>
+        배송 처리
+      </Typography>
 
       {error && (
-        <Alert severity='warning' sx={{ mb: 2 }} action={
-          <Button size='small' onClick={load}>다시 시도</Button>
-        }>{error}</Alert>
+        <Alert
+          severity='warning'
+          sx={{ mb: 2 }}
+          action={
+            <Button size='small' onClick={() => void load()}>
+              다시 시도
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
       )}
 
       <Card>
@@ -126,7 +177,7 @@ export default function ShippingPage() {
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
             <CircularProgress />
           </Box>
-        ) : orders.length === 0 ? (
+        ) : rows.length === 0 ? (
           <Box sx={{ p: 6, textAlign: 'center' }}>
             <Typography color='text.secondary'>배송 처리할 주문이 없습니다.</Typography>
           </Box>
@@ -135,30 +186,34 @@ export default function ShippingPage() {
             <TableHead>
               <TableRow>
                 <TableCell>주문번호</TableCell>
-                <TableCell>상품명</TableCell>
-                <TableCell>구매자</TableCell>
+                <TableCell>상품</TableCell>
+                <TableCell>주문자</TableCell>
                 <TableCell align='center'>수량</TableCell>
+                <TableCell align='right'>금액</TableCell>
                 <TableCell>주문일</TableCell>
                 <TableCell align='center'>상태</TableCell>
                 <TableCell align='center'>처리</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {orders.map(o => (
-                <TableRow key={o.id} hover>
+              {rows.map(o => (
+                <TableRow key={o.line_id} hover>
                   <TableCell>
-                    <Typography variant='caption' fontFamily='monospace'>{o.order_number}</Typography>
+                    <Typography variant='caption' fontFamily='monospace'>
+                      {o.order_no}
+                    </Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant='body2' sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {o.product_name}
+                      {o.product_summary}
                     </Typography>
                   </TableCell>
-                  <TableCell>{o.buyer_name}</TableCell>
-                  <TableCell align='center'>{o.qty}</TableCell>
-                  <TableCell>{fmtDate(o.ordered_at)}</TableCell>
+                  <TableCell>{o.member_name ?? '-'}</TableCell>
+                  <TableCell align='center'>{o.line_qty}</TableCell>
+                  <TableCell align='right'>{fmtMoney(o.total_amount)}</TableCell>
+                  <TableCell>{fmtDate(o.created_at)}</TableCell>
                   <TableCell align='center'>
-                    <Chip label='배송준비' size='small' color='warning' />
+                    <Chip label={o.order_status} size='small' color='warning' variant='outlined' />
                   </TableCell>
                   <TableCell align='center'>
                     <Button size='small' variant='contained' onClick={() => openDialog(o)}>
@@ -172,35 +227,42 @@ export default function ShippingPage() {
         )}
       </Card>
 
-      {total > SIZE && (
+      {totalRaw > SIZE && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Pagination count={Math.ceil(total / SIZE)} page={page}
-            onChange={(_, v) => setPage(v)} color='primary' />
+          <Pagination count={Math.ceil(totalRaw / SIZE)} page={page} onChange={(_, v) => setPage(v)} color='primary' />
         </Box>
       )}
 
-      {/* 배송 입력 다이얼로그 */}
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth='xs' fullWidth>
         <DialogTitle>배송 처리</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
           {selected && (
             <Typography variant='body2' color='text.secondary'>
-              {selected.order_number} · {selected.product_name}
+              {selected.order_no} · {selected.product_summary}
             </Typography>
           )}
           <TextField select label='택배사' value={carrier} onChange={e => setCarrier(e.target.value)} fullWidth size='small'>
             {CARRIERS.map(c => (
-              <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>
+              <MenuItem key={c.value} value={c.value}>
+                {c.label}
+              </MenuItem>
             ))}
           </TextField>
-          <TextField label='운송장 번호' value={trackingNo}
-            onChange={e => setTrackingNo(e.target.value)} fullWidth size='small'
-            placeholder='운송장 번호 입력' />
+          <TextField
+            label='운송장 번호'
+            value={trackingNo}
+            onChange={e => setTrackingNo(e.target.value)}
+            fullWidth
+            size='small'
+            placeholder='운송장 번호 입력'
+          />
           {submitErr && <Alert severity='error'>{submitErr}</Alert>}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)} disabled={submitting}>취소</Button>
-          <Button variant='contained' onClick={handleShip} disabled={submitting}>
+          <Button onClick={() => setOpen(false)} disabled={submitting}>
+            취소
+          </Button>
+          <Button variant='contained' onClick={() => void handleShip()} disabled={submitting}>
             {submitting ? '처리 중...' : '배송 처리'}
           </Button>
         </DialogActions>
