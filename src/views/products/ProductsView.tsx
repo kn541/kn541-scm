@@ -3,6 +3,7 @@
  * KN541 SCM 상품 관리
  * GET  /scm/products       — 목록
  * 수정: /products/:id/edit 라우트로 이동
+ * FIX: SOLDOUT→품절, ACTIVE→판매중 등 DB 실제값 매핑 추가
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
@@ -23,8 +24,8 @@ import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import CustomTextField from '@core/components/mui/TextField'
 import tableStyles from '@core/styles/table.module.css'
-import { scmGet, fmtMoney, fmtDate } from '@/lib/scmApi'
 import ExcelDownBtn from '@/components/excel/ExcelDownBtn'
+import { scmGet, fmtMoney, fmtDate } from '@/lib/scmApi'
 
 interface ScmProduct {
   product_id:     string
@@ -39,18 +40,26 @@ interface ScmProduct {
   category_name:  string | null
 }
 
+// DB 실제값 기준 매핑 (SOLDOUT=밑줄없음, SOLD_OUT=밑줄있음 양방향 호환)
 const STATUS_MAP: Record<string, { label: string; color: 'default'|'warning'|'success'|'error'|'info' }> = {
   WAITING:       { label: '승인대기', color: 'warning' },
+  PENDING:       { label: '승인대기', color: 'warning' },
   ON_SALE:       { label: '판매중',   color: 'success' },
+  ACTIVE:        { label: '판매중',   color: 'success' },
+  APPROVED:      { label: '판매중',   color: 'success' },
   SOLD_OUT:      { label: '품절',     color: 'error'   },
+  SOLDOUT:       { label: '품절',     color: 'error'   },
   DISCONTINUED:  { label: '단종',     color: 'default' },
+  INACTIVE:      { label: '비활성',   color: 'default' },
+  HIDDEN:        { label: '숨김',     color: 'default' },
+  DELETED:       { label: '삭제',     color: 'error'   },
 }
 
 const STATUS_TABS = [
   { value: '',             label: '전체' },
   { value: 'WAITING',      label: '승인대기' },
   { value: 'ON_SALE',      label: '판매중' },
-  { value: 'SOLD_OUT',     label: '품절' },
+  { value: 'SOLDOUT',      label: '품절' },
   { value: 'DISCONTINUED', label: '단종' },
 ]
 
@@ -100,29 +109,22 @@ export default function ProductsView() {
     <Box className='flex flex-col gap-4'>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant='h5' fontWeight={700}>상품 관리</Typography>
-        <Button variant='contained' startIcon={<i className='tabler-plus' />}
-          onClick={() => router.push('/products/new')}>
-          상품 등록
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <ExcelDownBtn entity='scm_products' filters={{ ...(tab ? { status: tab } : {}), ...(keyword ? { keyword } : {}) }} label='상품 다운로드' />
+          <Button variant='contained' startIcon={<i className='tabler-plus' />}
+            onClick={() => router.push('/products/new')}>
+            상품 등록
+          </Button>
+        </Box>
       </Box>
 
       <Card>
         <CardHeader
           title='상품 목록'
           action={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <ExcelDownBtn
-                entity='scm_products'
-                label='상품 다운로드'
-                filters={{
-                  status: tab || undefined,
-                  keyword: keyword.trim() || undefined,
-                }}
-              />
-              {loading
-                ? <CircularProgress size={16} />
-                : <Chip label={`총 ${total.toLocaleString()}개`} size='small' color='primary' variant='outlined' sx={{ fontWeight: 600 }} />}
-            </Box>
+            loading
+              ? <CircularProgress size={16} />
+              : <Chip label={`총 ${total.toLocaleString()}개`} size='small' color='primary' variant='outlined' sx={{ fontWeight: 600 }} />
           }
         />
 
@@ -183,7 +185,7 @@ export default function ProductsView() {
                   </tr>
                 ) : rows.map(p => {
                   const sm = STATUS_MAP[p.product_status] ?? { label: p.product_status, color: 'default' as const }
-                  const isPending = p.product_status === 'WAITING'
+                  const isPending = p.product_status === 'WAITING' || p.product_status === 'PENDING'
                   return (
                     <tr key={p.product_id}
                       style={isPending ? { background: 'var(--mui-palette-warning-lightOpacity)' } : {}}>
@@ -211,7 +213,7 @@ export default function ProductsView() {
                       </td>
                       <td>
                         <Chip label={sm.label} size='small' color={sm.color}
-                          variant={p.product_status === 'ON_SALE' ? 'filled' : 'outlined'} />
+                          variant={p.product_status === 'ON_SALE' || p.product_status === 'ACTIVE' ? 'filled' : 'outlined'} />
                       </td>
                       <td>
                         <Chip label={p.is_display ? '진열' : '숨김'} size='small'

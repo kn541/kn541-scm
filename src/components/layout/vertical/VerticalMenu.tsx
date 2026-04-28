@@ -24,9 +24,6 @@ import StyledVerticalNavExpandIcon from '@menu/styles/vertical/StyledVerticalNav
 import menuItemStyles from '@core/styles/vertical/menuItemStyles'
 import menuSectionStyles from '@core/styles/vertical/menuSectionStyles'
 
-// Data Imports
-import verticalMenuData from '@/data/navigation/verticalMenuData'
-
 type RenderExpandIconProps = {
   open?: boolean
   transitionDuration?: VerticalMenuContextProps['transitionDuration']
@@ -90,11 +87,10 @@ const VerticalMenu = ({ scrollMenu }: Props) => {
           <MenuItem href='/settlements/payments'>입금 확인</MenuItem>
         </SubMenu>
 
-        {/* 문의 */}
-        <SubMenu label='문의' icon={<i className='tabler-message-circle' />}>
-          <MenuItem href='/inquiries'>문의 내역</MenuItem>
-          <MenuItem href='/inquiries/new'>문의 등록</MenuItem>
-        </SubMenu>
+        {/* 문의 — 문의 등록 서브메뉴 제거 (기능 없음) */}
+        <MenuItem href='/inquiries' icon={<i className='tabler-message-circle' />}>
+          문의
+        </MenuItem>
 
         {/* 공지사항 */}
         <MenuItem href='/notices' icon={<i className='tabler-speakerphone' />}>
