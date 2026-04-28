@@ -40,7 +40,7 @@ import FormControl from '@mui/material/FormControl'
 import TextField from '@mui/material/TextField'
 
 import CustomTextField from '@core/components/mui/TextField'
-import { scmGet, scmPost, scmPatch } from '@/lib/scmApi'
+import { scmGet, scmPost, scmPatch, publicGet } from '@/lib/scmApi'
 
 // ─────────────────────────────────────────
 // 타입
@@ -236,21 +236,66 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   }, [sel2])
 
   // ── edit 모드 데이터 로드 ─────────────────
+  // 백엔드: GET /products/{id} (v_product_detail) — SCM 목록 API에는 상세 필드가 부족해 공개 단건 조회 사용
   useEffect(() => {
     if (mode !== 'edit' || !productId) return
     let cancelled = false
     const load = async () => {
       setLoading(true)
       try {
-        const res = await scmGet<any>(`/scm/products?page=1&size=1`)
-        // 개별 상품 조회 API가 필요하면 추후 추가
-      } catch { /* ignore */ } finally {
+        const product = await publicGet<Record<string, any>>(`/products/${encodeURIComponent(productId)}`)
+        if (cancelled) return
+
+        const imgs: Array<{ image_url?: string; image_type?: string }> = Array.isArray(product.images)
+          ? [...product.images].sort(
+              (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+            )
+          : []
+        const detailUrls = imgs
+          .filter(i => i?.image_type !== 'THUMBNAIL' && i?.image_url)
+          .map(i => String(i.image_url))
+
+        setForm({
+          product_name: String(product.product_name ?? ''),
+          brand: String(product.brand ?? ''),
+          category_id: String(product.category_id ?? product.category_id_2 ?? product.category_id_1 ?? ''),
+          summary: String(product.summary ?? ''),
+          description: String(product.description ?? ''),
+          thumbnail_url: String(product.thumbnail_url ?? ''),
+          detail_img_1: detailUrls[0] ?? '',
+          detail_img_2: detailUrls[1] ?? '',
+          detail_img_3: detailUrls[2] ?? '',
+          supply_price: String(product.supply_price ?? 0),
+          sale_price: String(product.sale_price ?? 0),
+          stock_qty: String(product.stock_qty ?? 0),
+          min_order_qty: String(product.min_order_qty ?? 1),
+          max_order_qty: product.max_order_qty != null ? String(product.max_order_qty) : '',
+          is_option: Boolean(product.is_option),
+          sale_start_at: product.sale_start_at ? String(product.sale_start_at).slice(0, 10) : '',
+          sale_end_at: product.sale_end_at ? String(product.sale_end_at).slice(0, 10) : '',
+        })
+
+        setShipping({
+          sc_type: Number(product.sc_type ?? 3) as ScType,
+          sc_price: String(product.sc_price ?? product.shipping_fee ?? 0),
+          sc_minimum: product.sc_minimum != null ? String(product.sc_minimum) : '',
+          sc_condition: (product.sc_condition as ShippingState['sc_condition']) ?? 'amount',
+          delivery_days: String(product.delivery_days ?? 3),
+          return_fee: String(product.return_fee ?? 0),
+          exchange_fee: String(product.exchange_fee ?? 0),
+          delivery_co: String(product.delivery_company ?? product.delivery_co ?? ''),
+        })
+      } catch (e: unknown) {
+        toast(e instanceof Error ? e.message : '상품 정보를 불러올 수 없습니다.', 'error')
+      } finally {
         if (!cancelled) setLoading(false)
       }
     }
     void load()
-    return () => { cancelled = true }
-  }, [mode, productId])
+    return () => {
+      cancelled = true
+    }
+  }, [mode, productId, toast])
 
   // ── 수익 계산 ─────────────────────────────
   const supplyN = parseFloat(form.supply_price) || 0
