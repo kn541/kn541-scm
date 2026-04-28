@@ -41,11 +41,8 @@ const verticalMenuData = (): SCMMenuItemType[] => [
   },
   {
     label: '문의',
-    icon: 'tabler-message-circle',
-    children: [
-      { label: '문의 내역', href: '/inquiries',     icon: 'tabler-messages' },
-      { label: '문의 등록', href: '/inquiries/new', icon: 'tabler-edit' }
-    ]
+    href: '/inquiries',
+    icon: 'tabler-message-circle'
   },
   {
     label: '공지사항',

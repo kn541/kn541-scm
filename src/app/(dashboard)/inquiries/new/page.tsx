@@ -1,5 +1,6 @@
-import InquiryFormView from '@/views/inquiries/InquiryFormView'
-export const metadata = { title: '문의 등록' }
+import { redirect } from 'next/navigation'
+
+/** 문의 등록은 /inquiries 목록 다이얼로그로 통일 */
 export default function InquiryNewPage() {
-  return <InquiryFormView />
+  redirect('/inquiries')
 }

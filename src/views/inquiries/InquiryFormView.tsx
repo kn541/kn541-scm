@@ -17,14 +17,7 @@ import Snackbar from '@mui/material/Snackbar'
 import Grid from '@mui/material/Grid'
 import CustomTextField from '@core/components/mui/TextField'
 import { scmPost } from '@/lib/scmApi'
-
-const INQUIRY_TYPES = [
-  { value: 'PRODUCT',    label: '상품 문의' },
-  { value: 'SETTLEMENT', label: '정산 문의' },
-  { value: 'CONTRACT',   label: '계약 문의' },
-  { value: 'SYSTEM',     label: '시스템 문의' },
-  { value: 'OTHER',      label: '기타' },
-]
+import { INQUIRY_TYPE_OPTIONS } from '@/lib/inquiryOptions'
 
 export default function InquiryFormView() {
   const [form, setForm] = useState({ inquiry_type: 'PRODUCT', title: '', content: '' })
@@ -58,7 +51,11 @@ export default function InquiryFormView() {
               <CustomTextField select fullWidth label='문의 유형'
                 value={form.inquiry_type}
                 onChange={e => setForm(f => ({ ...f, inquiry_type: e.target.value }))}>
-                {INQUIRY_TYPES.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+                {INQUIRY_TYPE_OPTIONS.map(t => (
+                  <MenuItem key={t.value} value={t.value}>
+                    {t.label}
+                  </MenuItem>
+                ))}
               </CustomTextField>
             </Grid>
             <Grid size={{ xs: 12, sm: 8 }}>
