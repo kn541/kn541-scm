@@ -25,6 +25,7 @@ import MenuItem from '@mui/material/MenuItem'
 import Chip from '@mui/material/Chip'
 import Pagination from '@mui/material/Pagination'
 import { scmGet, scmPost, fmtDate, fmtMoney } from '@/lib/scmApi'
+import ExcelUploadDlg from '@/components/excel/ExcelUploadDlg'
 
 /** /scm/orders 한 행 = order_items 레코드 (OrdersView ScmOrder 집계와 다를 수 있음) */
 interface ScmOrderItemRow {
@@ -154,9 +155,12 @@ export default function ShippingPage() {
 
   return (
     <Box>
-      <Typography variant='h5' fontWeight={700} sx={{ mb: 3 }}>
-        배송 처리
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant='h5' fontWeight={700}>
+          배송 처리
+        </Typography>
+        <ExcelUploadDlg entity='scm_shipping' label='대량 송장 등록' onComplete={() => void load()} />
+      </Box>
 
       {error && (
         <Alert

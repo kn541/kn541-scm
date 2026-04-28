@@ -53,9 +53,9 @@ export async function publicGet<T>(path: string, timeoutMs = 10000): Promise<T> 
   }
 }
 
-export async function scmPost<T>(path: string, body: unknown): Promise<T> {
+export async function scmPost<T>(path: string, body: unknown, timeoutMs = 15000): Promise<T> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 15000)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const res = await fetch(`${BASE}${path}`, {
       method: 'POST',
@@ -66,7 +66,39 @@ export async function scmPost<T>(path: string, body: unknown): Promise<T> {
     clearTimeout(timer)
     if (res.status === 401) { window.location.href = '/login'; throw new Error('401') }
     const json = await res.json()
-    if (!res.ok) throw new Error(json.detail ?? '요청 실패')
+    if (!res.ok) {
+      const d = json.detail
+      const msg = Array.isArray(d) ? d.map((x: unknown) => String(x)).join(', ') : (d ?? '요청 실패')
+      throw new Error(msg)
+    }
+    return json.data as T
+  } catch (e: any) {
+    clearTimeout(timer)
+    if (e.name === 'AbortError') throw new Error('요청 시간이 초과됐습니다.')
+    throw e
+  }
+}
+
+/** multipart/form-data (파일 업로드) — Content-Type 은 브라우저가 설정 */
+export async function scmPostMultipart<T>(path: string, form: FormData, timeoutMs = 120000): Promise<T> {
+  const token = typeof window !== 'undefined' ? (localStorage.getItem('access_token') ?? '') : ''
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    if (res.status === 401) { window.location.href = '/login'; throw new Error('401') }
+    const json = await res.json()
+    if (!res.ok) {
+      const d = json.detail
+      const msg = Array.isArray(d) ? d.map((x: unknown) => String(x)).join(', ') : (d ?? '요청 실패')
+      throw new Error(msg)
+    }
     return json.data as T
   } catch (e: any) {
     clearTimeout(timer)
