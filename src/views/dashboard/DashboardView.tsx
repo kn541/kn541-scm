@@ -2,6 +2,7 @@
 /**
  * KN541 SCM 대시보드
  * GET /scm/dashboard — 카드 4개 + 바로가기 + 최근 주문
+ * TASK 4: RPC 응답(nested) ↔ 기존 flat 키 양방향 호환
  */
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -25,6 +26,17 @@ interface DashboardData {
   recent_orders?: Array<{
     order_no: string; status: string; total_amount: number; created_at: string
   }>
+}
+
+/** RPC 응답(nested) → 프론트 flat 키로 정규화 */
+function normalizeDashboard(d: any): DashboardData {
+  return {
+    pending_products:  d.pending_products  ?? d.products?.pending ?? 0,
+    new_orders:        d.new_orders        ?? d.orders_this_month?.count ?? 0,
+    this_month_sales:  d.this_month_sales  ?? d.orders_this_month?.amount ?? 0,
+    unsettled_amount:  d.unsettled_amount  ?? d.settlements?.pending_amount ?? 0,
+    recent_orders:     d.recent_orders,
+  }
 }
 
 const STAT_CARDS = [
@@ -53,8 +65,8 @@ export default function DashboardView() {
   const [error,   setError]   = useState('')
 
   useEffect(() => {
-    scmGet<DashboardData>('/scm/dashboard')
-      .then(d => setData(d))
+    scmGet<any>('/scm/dashboard')
+      .then(d => setData(normalizeDashboard(d)))
       .catch(e => {
         setData({ pending_products: 0, new_orders: 0, this_month_sales: 0, unsettled_amount: 0 })
         setError(String((e as Error).message))
