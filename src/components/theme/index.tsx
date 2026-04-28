@@ -23,6 +23,7 @@ import ModeChanger from './ModeChanger'
 
 // Config Imports
 import themeConfig from '@configs/themeConfig'
+import primaryColorConfig from '@configs/primaryColorConfig'
 
 // Hook Imports
 import { useSettings } from '@core/hooks/useSettings'
@@ -57,6 +58,9 @@ const CustomThemeProvider = (props: Props) => {
     }
   }
 
+  // primaryColor 방어: 쿠키에 없을 경우 기본값 사용
+  const primaryColor = settings.primaryColor || primaryColorConfig[0].main
+
   // Merge the primary color scheme override with the core theme
   const theme = useMemo(() => {
     const newTheme = {
@@ -64,18 +68,18 @@ const CustomThemeProvider = (props: Props) => {
         light: {
           palette: {
             primary: {
-              main: settings.primaryColor,
-              light: lighten(settings.primaryColor as string, 0.2),
-              dark: darken(settings.primaryColor as string, 0.1)
+              main: primaryColor,
+              light: lighten(primaryColor, 0.2),
+              dark: darken(primaryColor, 0.1)
             }
           }
         },
         dark: {
           palette: {
             primary: {
-              main: settings.primaryColor,
-              light: lighten(settings.primaryColor as string, 0.2),
-              dark: darken(settings.primaryColor as string, 0.1)
+              main: primaryColor,
+              light: lighten(primaryColor, 0.2),
+              dark: darken(primaryColor, 0.1)
             }
           }
         }
@@ -90,7 +94,7 @@ const CustomThemeProvider = (props: Props) => {
     return createTheme(coreTheme)
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.primaryColor, settings.skin, currentMode])
+  }, [primaryColor, settings.skin, currentMode])
 
   return (
     <AppRouterCacheProvider
