@@ -4,6 +4,7 @@
 import { useMemo } from 'react'
 
 // MUI Imports
+import { deepmerge } from '@mui/utils'
 import { ThemeProvider, lighten, darken, createTheme } from '@mui/material/styles'
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v14-appRouter'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -11,7 +12,6 @@ import type {} from '@mui/material/themeCssVarsAugmentation' //! Do not remove t
 import type {} from '@mui/lab/themeAugmentation' //! Do not remove this import otherwise you will get type errors while making a production build
 
 // Third-party Imports
-import deepmerge from 'deepmerge'
 import { useMedia } from 'react-use'
 import stylisRTLPlugin from 'stylis-plugin-rtl'
 
