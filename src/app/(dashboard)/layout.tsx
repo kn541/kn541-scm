@@ -9,6 +9,7 @@ import VerticalLayout from '@layouts/VerticalLayout'
 
 // Component Imports
 import Providers from '@components/Providers'
+import AuthGuard from '@components/AuthGuard'
 import Navigation from '@components/layout/vertical/Navigation'
 import Navbar from '@components/layout/vertical/Navbar'
 import VerticalFooter from '@components/layout/vertical/Footer'
@@ -24,14 +25,16 @@ const Layout = async (props: ChildrenType) => {
 
   return (
     <Providers direction={direction}>
-      <VerticalLayout navigation={<Navigation mode={mode} />} navbar={<Navbar />} footer={<VerticalFooter />}>
-        {children}
-      </VerticalLayout>
-      <ScrollToTop className='mui-fixed'>
-        <Button variant='contained' className='is-10 bs-10 rounded-full p-0 min-is-0 flex items-center justify-center'>
-          <i className='tabler-arrow-up' />
-        </Button>
-      </ScrollToTop>
+      <AuthGuard>
+        <VerticalLayout navigation={<Navigation mode={mode} />} navbar={<Navbar />} footer={<VerticalFooter />}>
+          {children}
+        </VerticalLayout>
+        <ScrollToTop className='mui-fixed'>
+          <Button variant='contained' className='is-10 bs-10 rounded-full p-0 min-is-0 flex items-center justify-center'>
+            <i className='tabler-arrow-up' />
+          </Button>
+        </ScrollToTop>
+      </AuthGuard>
     </Providers>
   )
 }
