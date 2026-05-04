@@ -32,10 +32,10 @@ const verticalMenuData = (): SCMMenuItemType[] => [
     ]
   },
   {
-    label: '정산',
+    label: '정산관리',
     icon: 'tabler-receipt',
     children: [
-      { label: '정산 내역', href: '/settlements',          icon: 'tabler-file-text' },
+      { label: '정산 현황', href: '/settlements',          icon: 'tabler-file-text' },
       { label: '입금 확인', href: '/settlements/payments', icon: 'tabler-credit-card' }
     ]
   },

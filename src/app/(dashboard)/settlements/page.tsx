@@ -1,2 +1,5 @@
-import SettlementsView from '@/views/settlements/SettlementsView'
-export default function SettlementsPage() { return <SettlementsView /> }
+import SettlementListPage from '@/views/settlements/SettlementListPage'
+
+export default function SettlementsPage() {
+  return <SettlementListPage />
+}

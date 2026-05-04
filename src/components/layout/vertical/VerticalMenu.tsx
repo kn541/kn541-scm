@@ -81,9 +81,9 @@ const VerticalMenu = ({ scrollMenu }: Props) => {
           <MenuItem href='/orders/shipping'>배송 처리</MenuItem>
         </SubMenu>
 
-        {/* 정산 */}
-        <SubMenu label='정산' icon={<i className='tabler-receipt' />}>
-          <MenuItem href='/settlements'>정산 내역</MenuItem>
+        {/* 정산관리 */}
+        <SubMenu label='정산관리' icon={<i className='tabler-receipt' />}>
+          <MenuItem href='/settlements'>정산 현황</MenuItem>
           <MenuItem href='/settlements/payments'>입금 확인</MenuItem>
         </SubMenu>
 
