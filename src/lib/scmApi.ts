@@ -2,6 +2,7 @@
 // 수정: 2026-04-28
 //   - scmGet: 10초 timeout + AbortController 추가 (TASK 4)
 //   - publicGet: 인증 없는 공개 API 전용 (공지사항 등)
+// 수정: 2026-05-06 — fetchSystemCodesPublic (product_status 탭 라벨)
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'https://kn541-production.up.railway.app'
 
 /** 엑셀 다운로드 등 비 JSON 응답용 */
@@ -10,6 +11,32 @@ export const SCM_API_BASE = BASE
 export function authHeaders(): Record<string, string> {
   const token = typeof window !== 'undefined' ? (localStorage.getItem('access_token') ?? '') : ''
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+}
+
+/** system_codes 공개 조회 (인증 불필요) — 탭 라벨용 category=product_status 등 */
+export async function fetchSystemCodesPublic(
+  category: string,
+  timeoutMs = 10000,
+): Promise<Array<{ code: string; code_name: string; code_value: string | null; sort_order: number }>> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${BASE}/system-codes?category=${encodeURIComponent(category)}`, {
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.detail ?? '코드 조회 실패')
+    const items = json.data?.items ?? []
+    return items as Array<{ code: string; code_name: string; code_value: string | null; sort_order: number }>
+  } catch (e: unknown) {
+    clearTimeout(timer)
+    if (e && typeof e === 'object' && 'name' in e && (e as { name?: string }).name === 'AbortError') {
+      throw new Error('요청 시간이 초과됐습니다.')
+    }
+    throw e
+  }
 }
 
 /** 인증 필요 GET — 10초 timeout, 401 시 로그인 리다이렉트 */
