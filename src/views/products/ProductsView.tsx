@@ -42,13 +42,14 @@ interface ScmProduct {
 
 type StatusTab = { code: string; label: string }
 
-/** 배지 색상만 코드 기준 (한글 매핑 없음) */
+/** v_scm_products_list.status_code: 001 판매중, 002 승인대기, 003 품절, 004 단종, 005 비활성, 006 반려 */
 const STATUS_BADGE_COLOR: Record<string, 'default' | 'warning' | 'success' | 'error' | 'info'> = {
-  '001': 'warning',
-  '002': 'success',
-  '003': 'error',
+  '001': 'success',
+  '002': 'warning',
+  '003': 'warning',
   '004': 'default',
-  '005': 'error',
+  '005': 'default',
+  '006': 'error',
 }
 
 const SEARCH_TYPES = [
@@ -238,7 +239,7 @@ export default function ProductsView() {
                 ) : rows.map(p => {
                   const name = p.status_name ?? p.status_code ?? '-'
                   const color = STATUS_BADGE_COLOR[p.status_code] ?? 'default'
-                  const pending = p.status_code === '001'
+                  const pending = p.status_code === '002'
                   return (
                     <tr key={p.product_id}
                       style={pending ? { background: 'var(--mui-palette-warning-lightOpacity)' } : {}}>
@@ -295,7 +296,7 @@ export default function ProductsView() {
                       </td>
                       <td>
                         <Chip label={name} size='small' color={color}
-                          variant={p.status_code === '002' ? 'filled' : 'outlined'} />
+                          variant={p.status_code === '001' ? 'filled' : 'outlined'} />
                       </td>
                       <td><Typography variant='caption'>{fmtDate(p.created_at)}</Typography></td>
                       <td>
