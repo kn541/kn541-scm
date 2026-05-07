@@ -41,6 +41,7 @@ import TextField from '@mui/material/TextField'
 
 import CustomTextField from '@core/components/mui/TextField'
 import { scmGet, scmPost, scmPatch, publicGet } from '@/lib/scmApi'
+import StockOrderSection from './sections/StockOrderSection'
 
 // ─────────────────────────────────────────
 // 타입
@@ -603,30 +604,11 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         <Divider />
 
         {/* ⑤ 재고·주문 */}
-        <Box>
-          <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>⑤ 재고·주문</Typography>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <CustomTextField fullWidth size='small' label='재고수량' type='number'
-                value={form.stock_qty}
-                onChange={e => setForm(f => ({ ...f, stock_qty: e.target.value }))}
-                slotProps={{ htmlInput: { min: 0 } }}
-                helperText='미설정 시 기본 99,999' />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <CustomTextField fullWidth size='small' label='최소주문수량' type='number'
-                value={form.min_order_qty}
-                onChange={e => setForm(f => ({ ...f, min_order_qty: e.target.value }))}
-                slotProps={{ htmlInput: { min: 1 } }} />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <CustomTextField fullWidth size='small' label='최대주문수량 (비우면 무제한)' type='number'
-                value={form.max_order_qty}
-                onChange={e => setForm(f => ({ ...f, max_order_qty: e.target.value }))}
-                slotProps={{ htmlInput: { min: 1 } }} />
-            </Grid>
-          </Grid>
-        </Box>
+        <StockOrderSection
+          value={{ stock_qty: form.stock_qty, min_order_qty: form.min_order_qty, max_order_qty: form.max_order_qty }}
+          onChange={s => setForm(f => ({ ...f, ...s }))}
+          sectionLabel='⑤ 재고·주문'
+        />
 
         <Divider />
 
