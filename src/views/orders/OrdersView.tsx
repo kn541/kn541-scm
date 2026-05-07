@@ -3,6 +3,7 @@
  * KN541 SCM 주문 관리
  * GET  /scm/orders               — 목록
  * POST /scm/orders/:id/ship      — 송장 등록
+ * 2026-05-07: 배송상태 칩 / 송장번호 클릭 → SweetTracker TrackingModal 연동
  */
 import { useState, useEffect, useCallback } from 'react'
 import Box from '@mui/material/Box'
@@ -25,6 +26,7 @@ import CustomTextField from '@core/components/mui/TextField'
 import tableStyles from '@core/styles/table.module.css'
 import { scmGet, scmPost, fmtMoney, fmtDate } from '@/lib/scmApi'
 import ExcelDownBtn from '@/components/excel/ExcelDownBtn'
+import TrackingModal from '@/components/TrackingModal'
 
 interface ScmOrder {
   order_id:         string
@@ -57,6 +59,9 @@ const ORDER_STATUS_MAP: Record<string, { label: string; color: 'default'|'info'|
   EXCHANGED:            { label: '교환완료',   color: 'success'   },
 }
 
+// 배송조회 가능한 상태
+const TRACKABLE_STATUSES = new Set(['SHIPPED', 'DELIVERED', 'RETURN_REQUESTED', 'RETURN_IN_PROGRESS', 'RETURNED'])
+
 const COURIER_LIST = [
   { value: 'CJ대한통운', label: 'CJ대한통운' },
   { value: '롯데택배',   label: '롯데택배'   },
@@ -74,19 +79,24 @@ const SEARCH_TYPES = [
 ]
 
 export default function OrdersView() {
-  const [rows,       setRows]       = useState<ScmOrder[]>([])
-  const [total,      setTotal]      = useState(0)
-  const [page,       setPage]       = useState(0)
+  const [rows,         setRows]         = useState<ScmOrder[]>([])
+  const [total,        setTotal]        = useState(0)
+  const [page,         setPage]         = useState(0)
   const [statusFilter, setStatusFilter] = useState('')
-  const [searchType, setSearchType] = useState(SEARCH_TYPES[0].value)
-  const [keyword,    setKeyword]    = useState('')
-  const [loading,    setLoading]    = useState(false)
-  const [error,      setError]      = useState('')
+  const [searchType,   setSearchType]   = useState(SEARCH_TYPES[0].value)
+  const [keyword,      setKeyword]      = useState('')
+  const [loading,      setLoading]      = useState(false)
+  const [error,        setError]        = useState('')
 
   // 송장 다이얼로그
   const [shipDialog, setShipDialog] = useState<{
     open: boolean; orderId: string; orderNo: string; company: string; trackingNo: string; saving: boolean
   }>({ open: false, orderId: '', orderNo: '', company: '', trackingNo: '', saving: false })
+
+  // 배송조회 모달
+  const [trackingModal, setTrackingModal] = useState<{
+    open: boolean; company: string; trackingNo: string; orderNo: string
+  }>({ open: false, company: '', trackingNo: '', orderNo: '' })
 
   const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' as 'success'|'error' })
   const toast = (msg: string, sev: 'success'|'error' = 'success') => setSnack({ open: true, msg, sev })
@@ -106,8 +116,8 @@ export default function OrdersView() {
 
   useEffect(() => { void load(0) }, [load])
 
-  const handleSearch  = () => { setPage(0); void load(0, statusFilter, keyword, searchType) }
-  const handleReset   = () => {
+  const handleSearch = () => { setPage(0); void load(0, statusFilter, keyword, searchType) }
+  const handleReset  = () => {
     setKeyword(''); setStatusFilter(''); setSearchType(SEARCH_TYPES[0].value); setPage(0)
     void load(0, '', '', SEARCH_TYPES[0].value)
   }
@@ -117,6 +127,17 @@ export default function OrdersView() {
     company: order.tracking_company ?? '', trackingNo: order.tracking_no ?? '',
     saving: false,
   })
+
+  const openTracking = (order: ScmOrder, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!order.tracking_company || !order.tracking_no) return
+    setTrackingModal({
+      open:       true,
+      company:    order.tracking_company,
+      trackingNo: order.tracking_no,
+      orderNo:    order.order_no,
+    })
+  }
 
   const handleShipSave = async () => {
     if (!shipDialog.company || !shipDialog.trackingNo.trim()) {
@@ -219,9 +240,10 @@ export default function OrdersView() {
                     </td>
                   </tr>
                 ) : rows.map((o, idx) => {
-                  const sm = ORDER_STATUS_MAP[o.order_status] ?? { label: o.order_status, color: 'default' as const }
+                  const sm          = ORDER_STATUS_MAP[o.order_status] ?? { label: o.order_status, color: 'default' as const }
                   const hasTracking = !!o.tracking_no
-                  const isReturn = ['RETURN_REQUESTED','RETURN_IN_PROGRESS','RETURNED','REFUND_REQUESTED','REFUNDED'].includes(o.order_status)
+                  const canTrack    = hasTracking && TRACKABLE_STATUSES.has(o.order_status)
+                  const isReturn    = ['RETURN_REQUESTED','RETURN_IN_PROGRESS','RETURNED','REFUND_REQUESTED','REFUNDED'].includes(o.order_status)
                   return (
                     <tr key={o.order_id}
                       style={isReturn ? { background: 'var(--mui-palette-warning-lightOpacity)' } : {}}>
@@ -237,24 +259,55 @@ export default function OrdersView() {
                         }}>{o.product_summary ?? '-'}</Typography>
                       </td>
                       <td><Typography variant='body2' fontWeight={600}>{fmtMoney(o.total_amount)}</Typography></td>
-                      <td><Chip label={sm.label} size='small' color={sm.color} /></td>
+
+                      {/* 주문상태 — 배송 중이면 클릭 가능 */}
+                      <td>
+                        <Tooltip title={canTrack ? '클릭하여 배송 조회' : sm.label}>
+                          <Chip
+                            label={sm.label}
+                            size='small'
+                            color={sm.color}
+                            onClick={canTrack ? (e) => openTracking(o, e) : undefined}
+                            sx={canTrack ? {
+                              cursor: 'pointer',
+                              '&:hover': { opacity: 0.85, transform: 'scale(1.03)' },
+                              transition: 'all 0.15s ease',
+                            } : {}}
+                          />
+                        </Tooltip>
+                      </td>
+
+                      {/* 송장번호 — 클릭하면 배송조회 */}
                       <td>
                         {hasTracking ? (
-                          <Box>
-                            <Typography variant='caption' color='text.secondary'>{o.tracking_company}</Typography>
-                            <Typography variant='body2'>{o.tracking_no}</Typography>
-                          </Box>
+                          <Tooltip title={canTrack ? '클릭하여 배송 조회' : o.tracking_no ?? ''}>
+                            <Box
+                              onClick={canTrack ? (e) => openTracking(o, e) : undefined}
+                              sx={canTrack ? {
+                                cursor: 'pointer',
+                                '&:hover': { color: 'primary.main' },
+                              } : {}}>
+                              <Typography variant='caption' color='text.secondary'>{o.tracking_company}</Typography>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Typography variant='body2' fontFamily='monospace'>{o.tracking_no}</Typography>
+                                {canTrack && (
+                                  <i className='tabler-search' style={{ fontSize: 12, color: 'var(--mui-palette-primary-main)' }} />
+                                )}
+                              </Box>
+                            </Box>
+                          </Tooltip>
                         ) : (
                           <Typography variant='caption' color='text.disabled'>미등록</Typography>
                         )}
                       </td>
+
                       <td><Typography variant='caption'>{fmtDate(o.created_at)}</Typography></td>
                       <td>
                         <Tooltip title={hasTracking ? '송장 수정' : '송장 등록'}>
                           <Button size='small'
                             variant={hasTracking ? 'outlined' : 'contained'}
                             color={hasTracking ? 'secondary' : 'primary'}
-                            onClick={() => openShipDialog(o)}
+                            onClick={(e) => { e.stopPropagation(); openShipDialog(o) }}
                             disabled={['CANCELLED', 'DELIVERED', 'RETURN_REQUESTED', 'RETURN_IN_PROGRESS', 'RETURNED', 'REFUNDED'].includes(o.order_status)}
                           >
                             <i className='tabler-truck' style={{ fontSize: 16 }} />
@@ -301,6 +354,15 @@ export default function OrdersView() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 배송조회 모달 */}
+      <TrackingModal
+        open={trackingModal.open}
+        onClose={() => setTrackingModal(m => ({ ...m, open: false }))}
+        company={trackingModal.company}
+        trackingNo={trackingModal.trackingNo}
+        orderNo={trackingModal.orderNo}
+      />
 
       <Snackbar open={snack.open} autoHideDuration={4000}
         onClose={() => setSnack(s => ({ ...s, open: false }))}
