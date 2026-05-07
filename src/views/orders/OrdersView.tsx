@@ -39,13 +39,22 @@ interface ScmOrder {
   created_at:       string
 }
 
-const ORDER_STATUS_MAP: Record<string, { label: string; color: 'default'|'info'|'warning'|'success'|'error'|'primary' }> = {
-  PENDING:   { label: '결제대기',   color: 'default'  },
-  PAID:      { label: '결제완료',   color: 'info'     },
-  PREPARING: { label: '배송준비중', color: 'warning'  },
-  SHIPPED:   { label: '배송중',     color: 'primary'  },
-  DELIVERED: { label: '배송완료',   color: 'success'  },
-  CANCELLED: { label: '취소',       color: 'error'    },
+// 주문 상태 한글 매핑 — DB order_status 전체 커버
+const ORDER_STATUS_MAP: Record<string, { label: string; color: 'default'|'info'|'warning'|'success'|'error'|'primary'|'secondary' }> = {
+  PENDING:              { label: '결제대기',   color: 'default'   },
+  PAID:                 { label: '결제완료',   color: 'info'      },
+  PREPARING:            { label: '배송준비중', color: 'warning'   },
+  SHIPPED:              { label: '배송중',     color: 'primary'   },
+  DELIVERED:            { label: '배송완료',   color: 'success'   },
+  CANCELLED:            { label: '취소',       color: 'error'     },
+  RETURN_REQUESTED:     { label: '반품요청',   color: 'warning'   },
+  RETURN_IN_PROGRESS:   { label: '반품회수중', color: 'secondary' },
+  RETURNED:             { label: '반품완료',   color: 'default'   },
+  REFUND_REQUESTED:     { label: '환불요청',   color: 'warning'   },
+  REFUNDED:             { label: '환불완료',   color: 'success'   },
+  EXCHANGE_REQUESTED:   { label: '교환요청',   color: 'warning'   },
+  EXCHANGE_IN_PROGRESS: { label: '교환처리중', color: 'secondary' },
+  EXCHANGED:            { label: '교환완료',   color: 'success'   },
 }
 
 const COURIER_LIST = [
@@ -212,8 +221,10 @@ export default function OrdersView() {
                 ) : rows.map((o, idx) => {
                   const sm = ORDER_STATUS_MAP[o.order_status] ?? { label: o.order_status, color: 'default' as const }
                   const hasTracking = !!o.tracking_no
+                  const isReturn = ['RETURN_REQUESTED','RETURN_IN_PROGRESS','RETURNED','REFUND_REQUESTED','REFUNDED'].includes(o.order_status)
                   return (
-                    <tr key={o.order_id}>
+                    <tr key={o.order_id}
+                      style={isReturn ? { background: 'var(--mui-palette-warning-lightOpacity)' } : {}}>
                       <td><Typography variant='body2'>{page * 20 + idx + 1}</Typography></td>
                       <td><Typography variant='body2' fontWeight={600}>{o.order_no}</Typography></td>
                       <td>
@@ -244,7 +255,7 @@ export default function OrdersView() {
                             variant={hasTracking ? 'outlined' : 'contained'}
                             color={hasTracking ? 'secondary' : 'primary'}
                             onClick={() => openShipDialog(o)}
-                            disabled={['CANCELLED', 'DELIVERED'].includes(o.order_status)}
+                            disabled={['CANCELLED', 'DELIVERED', 'RETURN_REQUESTED', 'RETURN_IN_PROGRESS', 'RETURNED', 'REFUNDED'].includes(o.order_status)}
                           >
                             <i className='tabler-truck' style={{ fontSize: 16 }} />
                           </Button>

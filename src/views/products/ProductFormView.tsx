@@ -408,7 +408,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
             <i className='tabler-clock' style={{ fontSize: 18, color: 'var(--mui-palette-warning-main)' }} />
             <Box>
               <Typography variant='caption' color='text.secondary' display='block'>승인 상태</Typography>
-              <Typography variant='body2' fontWeight={700} color='warning.main'>PENDING (관리자 승인 대기)</Typography>
+              <Typography variant='body2' fontWeight={700} color='warning.main'>승인대기 (관리자 검토 중)</Typography>
             </Box>
           </Box>
         </Box>
