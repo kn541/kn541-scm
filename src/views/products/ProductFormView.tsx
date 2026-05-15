@@ -28,11 +28,6 @@ import IconButton from '@mui/material/IconButton'
 import CircularProgress from '@mui/material/CircularProgress'
 import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
-import Card from '@mui/material/Card'
-import CardContent from '@mui/material/CardContent'
-import Radio from '@mui/material/Radio'
-import RadioGroup from '@mui/material/RadioGroup'
-import Collapse from '@mui/material/Collapse'
 import Chip from '@mui/material/Chip'
 import Select from '@mui/material/Select'
 import InputLabel from '@mui/material/InputLabel'
@@ -42,6 +37,9 @@ import TextField from '@mui/material/TextField'
 import CustomTextField from '@core/components/mui/TextField'
 import { scmGet, scmPost, scmPatch, publicGet } from '@/lib/scmApi'
 import StockOrderSection from './sections/StockOrderSection'
+import SaleScheduleSection from './sections/SaleScheduleSection'
+import ShippingPolicySection from './sections/ShippingPolicySection'
+import type { ShippingState as ShippingPolicyValue } from './sections/productFormTypes'
 
 // ─────────────────────────────────────────
 // 타입
@@ -75,11 +73,12 @@ interface FormState {
   sale_end_at:   string
 }
 
-interface ShippingState {
+interface ScmShippingState {
   sc_type:       ScType
   sc_price:      string
   sc_minimum:    string
   sc_condition:  'amount' | 'qty'
+  sc_qty:        string
   delivery_days: string
   return_fee:    string
   exchange_fee:  string
@@ -91,13 +90,6 @@ interface OptionDraft {
   option_name: string
   add_price:   string
   stock_qty:   string
-}
-
-const SC_TYPE_LABELS: Record<number, string> = {
-  1: '무료배송',
-  2: '조건부무료',
-  3: '유료배송',
-  4: '수량별부과',
 }
 
 const EMPTY_FORM: FormState = {
@@ -120,11 +112,12 @@ const EMPTY_FORM: FormState = {
   sale_end_at:   '',
 }
 
-const EMPTY_SHIP: ShippingState = {
+const EMPTY_SHIP: ScmShippingState = {
   sc_type:       3,
   sc_price:      '0',
   sc_minimum:    '',
   sc_condition:  'amount',
+  sc_qty:        '1',
   delivery_days: '3',
   return_fee:    '0',
   exchange_fee:  '0',
@@ -136,27 +129,46 @@ const newKey = () =>
     ? crypto.randomUUID()
     : String(Date.now() + Math.random())
 
-// ─────────────────────────────────────────
-// 배송비 미리보기
-// ─────────────────────────────────────────
-const ShippingPreview = ({ scQty, scPrice }: { scQty: number; scPrice: number }) => {
-  if (!scQty || !scPrice) return null
-  const samples = [1, 3, 5, 10]
-  return (
-    <Box sx={{ bgcolor: 'action.hover', borderRadius: 2, p: 2, mt: 1 }}>
-      <Typography variant='caption' color='text.secondary' fontWeight={600}>
-        💡 수량별부과 예시 (단위: {scQty}개당 ₩{scPrice.toLocaleString('ko-KR')})
-      </Typography>
-      {samples.map(qty => (
-        <Box key={qty} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
-          <Typography variant='caption'>{qty}개 구매</Typography>
-          <Typography variant='caption' fontWeight={700}>
-            → 배송비 ₩{(Math.ceil(qty / scQty) * scPrice).toLocaleString('ko-KR')}
-          </Typography>
-        </Box>
-      ))}
-    </Box>
-  )
+function scmShippingToPolicy(s: ScmShippingState): ShippingPolicyValue {
+  const threshold = s.sc_minimum
+  return {
+    sc_type: String(s.sc_type),
+    sc_method: '0',
+    sc_price: s.sc_price,
+    sc_minimum: s.sc_condition === 'amount' ? threshold : '',
+    sc_free_qty: s.sc_condition === 'qty' ? threshold : '',
+    sc_qty: s.sc_qty,
+    sc_condition_type: s.sc_condition,
+    return_fee: s.return_fee,
+    exchange_fee: s.exchange_fee,
+    delivery_company: s.delivery_co,
+    delivery_days: s.delivery_days,
+  }
+}
+
+function policyToScmShipping(v: ShippingPolicyValue): ScmShippingState {
+  const scType = Number(v.sc_type) as ScType
+  const cond = v.sc_condition_type
+  const sc_minimum = cond === 'amount' ? v.sc_minimum : (v.sc_free_qty || v.sc_minimum)
+  return {
+    sc_type: scType,
+    sc_price: v.sc_price,
+    sc_minimum,
+    sc_condition: cond,
+    sc_qty: v.sc_qty,
+    delivery_days: v.delivery_days,
+    return_fee: v.return_fee,
+    exchange_fee: v.exchange_fee,
+    delivery_co: v.delivery_company,
+  }
+}
+
+function toDatetimeLocalInput(v: unknown): string {
+  const s = v != null ? String(v) : ''
+  if (!s) return ''
+  if (s.includes('T')) return s.slice(0, 16)
+  if (s.length >= 10) return `${s.slice(0, 10)}T00:00`
+  return s
 }
 
 // ─────────────────────────────────────────
@@ -172,7 +184,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
 
   // ── 폼 상태 ─────────────────────────────
   const [form,     setForm]     = useState<FormState>(EMPTY_FORM)
-  const [shipping, setShipping] = useState<ShippingState>(EMPTY_SHIP)
+  const [shipping, setShipping] = useState<ScmShippingState>(EMPTY_SHIP)
   const [options,  setOptions]  = useState<OptionDraft[]>([])
 
   // ── 카테고리 3단 ─────────────────────────
@@ -266,15 +278,20 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           min_order_qty: String(product.min_order_qty ?? 1),
           max_order_qty: product.max_order_qty != null ? String(product.max_order_qty) : '',
           is_option: Boolean(product.is_option),
-          sale_start_at: product.sale_start_at ? String(product.sale_start_at).slice(0, 10) : '',
-          sale_end_at: product.sale_end_at ? String(product.sale_end_at).slice(0, 10) : '',
+          sale_start_at: toDatetimeLocalInput(product.sale_start_at),
+          sale_end_at: toDatetimeLocalInput(product.sale_end_at),
         })
+
+        const rawCond = product.sc_condition_type ?? product.sc_condition
+        const sc_condition: ScmShippingState['sc_condition'] =
+          rawCond === 'qty' || rawCond === 'QTY' ? 'qty' : 'amount'
 
         setShipping({
           sc_type: Number(product.sc_type ?? 3) as ScType,
           sc_price: String(product.sc_price ?? product.shipping_fee ?? 0),
           sc_minimum: product.sc_minimum != null ? String(product.sc_minimum) : '',
-          sc_condition: (product.sc_condition as ShippingState['sc_condition']) ?? 'amount',
+          sc_condition,
+          sc_qty: product.sc_qty != null ? String(product.sc_qty) : '1',
           delivery_days: String(product.delivery_days ?? 3),
           return_fee: String(product.return_fee ?? 0),
           exchange_fee: String(product.exchange_fee ?? 0),
@@ -296,12 +313,6 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const supplyN = parseFloat(form.supply_price) || 0
   const saleN   = parseFloat(form.sale_price)   || 0
   const profit  = saleN - supplyN
-
-  // ── 배송비 변경 → 반품/교환비 자동 계산 ───
-  const handleScPriceChange = (val: string) => {
-    const p = parseFloat(val) || 0
-    setShipping(s => ({ ...s, sc_price: val, return_fee: String(p * 2), exchange_fee: String(p * 2) }))
-  }
 
   // ── 제출 ─────────────────────────────────
   const handleSubmit = async () => {
@@ -356,8 +367,6 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
       </Box>
     )
   }
-
-  const showShippingFee = shipping.sc_type !== 1
 
   return (
     <>
@@ -519,87 +528,21 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         <Divider />
 
         {/* ④ 배송정책 */}
-        <Box>
-          <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>④ 배송정책</Typography>
-          <Card variant='outlined'>
-            <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-
-              <Box>
-                <Typography variant='body2' fontWeight={600} sx={{ mb: 1 }}>배송비 유형 *</Typography>
-                <RadioGroup row value={String(shipping.sc_type)}
-                  onChange={e => setShipping(s => ({ ...s, sc_type: Number(e.target.value) as ScType }))}>
-                  {([1, 2, 3, 4] as ScType[]).map(t => (
-                    <FormControlLabel key={t} value={String(t)} control={<Radio />} label={SC_TYPE_LABELS[t]} />
-                  ))}
-                </RadioGroup>
-              </Box>
-
-              {/* 조건부무료 */}
-              <Collapse in={shipping.sc_type === 2}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <RadioGroup row value={shipping.sc_condition}
-                    onChange={e => setShipping(s => ({ ...s, sc_condition: e.target.value as 'amount' | 'qty' }))}>
-                    <FormControlLabel value='amount' control={<Radio />} label='금액 기준 (N원 이상 무료)' />
-                    <FormControlLabel value='qty'    control={<Radio />} label='수량 기준 (N개 이상 무료)' />
-                  </RadioGroup>
-                  <CustomTextField fullWidth size='small'
-                    label={shipping.sc_condition === 'amount' ? '무료배송 기준금액 (원 이상)' : '무료배송 기준수량 (개 이상)'}
-                    type='number' value={shipping.sc_minimum}
-                    onChange={e => setShipping(s => ({ ...s, sc_minimum: e.target.value }))} />
-                </Box>
-              </Collapse>
-
-              {/* 유료 / 수량별 배송비 */}
-              <Collapse in={showShippingFee}>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, sm: 4 }}>
-                    <CustomTextField fullWidth size='small' label='배송비 (원)' type='number'
-                      value={shipping.sc_price}
-                      onChange={e => handleScPriceChange(e.target.value)}
-                      helperText='입력 시 반품/교환비 ×2 자동계산' />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 4 }}>
-                    <CustomTextField fullWidth size='small' label='반품 배송비 (원)' type='number'
-                      value={shipping.return_fee}
-                      onChange={e => setShipping(s => ({ ...s, return_fee: e.target.value }))} />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 4 }}>
-                    <CustomTextField fullWidth size='small' label='교환 배송비 (원)' type='number'
-                      value={shipping.exchange_fee}
-                      onChange={e => setShipping(s => ({ ...s, exchange_fee: e.target.value }))} />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 4 }}>
-                    <CustomTextField fullWidth size='small' label='배송사 (예: CJ대한통운)'
-                      value={shipping.delivery_co}
-                      onChange={e => setShipping(s => ({ ...s, delivery_co: e.target.value }))} />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 4 }}>
-                    <CustomTextField fullWidth size='small' label='평균 배송일' type='number'
-                      value={shipping.delivery_days}
-                      onChange={e => setShipping(s => ({ ...s, delivery_days: e.target.value }))}
-                      slotProps={{ htmlInput: { min: 1, max: 60 } }} />
-                  </Grid>
-                </Grid>
-                {shipping.sc_type === 4 && (
-                  <ShippingPreview scQty={1} scPrice={parseFloat(shipping.sc_price) || 0} />
-                )}
-              </Collapse>
-
-              {/* 무료배송일 때만 배송일 표시 */}
-              <Collapse in={shipping.sc_type === 1}>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, sm: 4 }}>
-                    <CustomTextField fullWidth size='small' label='평균 배송일' type='number'
-                      value={shipping.delivery_days}
-                      onChange={e => setShipping(s => ({ ...s, delivery_days: e.target.value }))}
-                      slotProps={{ htmlInput: { min: 1, max: 60 } }} />
-                  </Grid>
-                </Grid>
-              </Collapse>
-
-            </CardContent>
-          </Card>
-        </Box>
+        <ShippingPolicySection
+          mode='scm'
+          value={scmShippingToPolicy(shipping)}
+          onChange={v => {
+            setShipping(prev => {
+              const next = policyToScmShipping(v)
+              if (v.sc_price !== String(prev.sc_price)) {
+                const price = parseFloat(v.sc_price) || 0
+                next.return_fee = String(price * 2)
+                next.exchange_fee = String(price * 2)
+              }
+              return next
+            })
+          }}
+        />
 
         <Divider />
 
@@ -613,27 +556,18 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         <Divider />
 
         {/* ⑥ 예약 조건 */}
-        <Box>
-          <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>⑥ 예약 조건</Typography>
-          <Card variant='outlined'>
-            <CardContent>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <CustomTextField fullWidth size='small' label='판매 시작일 (비우면 승인 후 즉시)' type='datetime-local'
-                    value={form.sale_start_at}
-                    onChange={e => setForm(f => ({ ...f, sale_start_at: e.target.value }))}
-                    slotProps={{ inputLabel: { shrink: true } }} />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <CustomTextField fullWidth size='small' label='판매 종료일 (비우면 무기한)' type='datetime-local'
-                    value={form.sale_end_at}
-                    onChange={e => setForm(f => ({ ...f, sale_end_at: e.target.value }))}
-                    slotProps={{ inputLabel: { shrink: true } }} />
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        </Box>
+        <SaleScheduleSection
+          sectionLabel='⑥ 예약 조건'
+          hidePeriodToggle
+          value={{
+            sale_start_date: form.sale_start_at,
+            sale_end_date: form.sale_end_at,
+            use_schedule: true,
+          }}
+          onChange={next =>
+            setForm(f => ({ ...f, sale_start_at: next.sale_start_date, sale_end_at: next.sale_end_date }))
+          }
+        />
 
         <Divider />
 

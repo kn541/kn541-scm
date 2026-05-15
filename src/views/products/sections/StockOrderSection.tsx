@@ -12,11 +12,9 @@ import Typography from '@mui/material/Typography'
 import Grid from '@mui/material/Grid'
 import CustomTextField from '@core/components/mui/TextField'
 
-export interface StockOrderState {
-  stock_qty:     string
-  min_order_qty: string
-  max_order_qty: string
-}
+import type { StockOrderState } from './productFormTypes'
+
+export type { StockOrderState } from './productFormTypes'
 
 interface Props {
   value:    StockOrderState
