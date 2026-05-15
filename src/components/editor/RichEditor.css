@@ -1,0 +1,61 @@
+/* Tiptap 본문 — MUI 테마 변수·다크모드 연동 */
+.rich-editor .ProseMirror {
+  min-height: var(--rich-editor-min-height, 200px);
+  padding: 12px 14px;
+  outline: none;
+  color: var(--mui-palette-text-primary, inherit);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.rich-editor .ProseMirror p {
+  margin: 0.5em 0;
+}
+
+.rich-editor .ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--mui-palette-text-disabled, rgba(0, 0, 0, 0.38));
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.rich-editor .ProseMirror h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0.75em 0 0.35em;
+}
+
+.rich-editor .ProseMirror h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0.65em 0 0.3em;
+}
+
+.rich-editor .ProseMirror ul,
+.rich-editor .ProseMirror ol {
+  margin: 0.5em 0;
+  padding-left: 1.5rem;
+}
+
+.rich-editor .ProseMirror blockquote {
+  margin: 0.5em 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--mui-palette-divider, rgba(0, 0, 0, 0.12));
+  color: var(--mui-palette-text-secondary, inherit);
+}
+
+.rich-editor .ProseMirror hr {
+  margin: 1rem 0;
+  border: none;
+  border-top: 1px solid var(--mui-palette-divider, rgba(0, 0, 0, 0.12));
+}
+
+.rich-editor .ProseMirror a {
+  color: var(--mui-palette-primary-main, #1976d2);
+  text-decoration: underline;
+}
+
+.rich-editor .ProseMirror-focused {
+  outline: none;
+}

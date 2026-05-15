@@ -8,8 +8,7 @@
  *  - supplier_id:  localStorage.user_id 자동 지정 (선택 불가)
  *  - approval_status: PENDING 고정 (백엔드 자동 처리)
  *  - KMC 동기화 / 옵션 / 속성 / 상품정보고시 섹션 제거
- *  - ImageUploader → URL 직접 입력
- *  - RichEditor    → Textarea
+ *  - ImageUploader / RichEditor — 어드민 ProductForm과 동일
  *  - CategorySelect → API 기반 3단 직접 구현
  */
 
@@ -32,9 +31,11 @@ import Chip from '@mui/material/Chip'
 import Select from '@mui/material/Select'
 import InputLabel from '@mui/material/InputLabel'
 import FormControl from '@mui/material/FormControl'
-import TextField from '@mui/material/TextField'
+import Collapse from '@mui/material/Collapse'
 
 import CustomTextField from '@core/components/mui/TextField'
+import ImageUploader from '@/components/upload/ImageUploader'
+import RichEditor, { isRichHtmlEmpty } from '@/components/editor/RichEditor'
 import { scmGet, scmPost, scmPatch, publicGet } from '@/lib/scmApi'
 import StockOrderSection from './sections/StockOrderSection'
 import SaleScheduleSection from './sections/SaleScheduleSection'
@@ -57,13 +58,10 @@ interface FormState {
   product_name:  string
   brand:         string
   category_id:   string
-  summary:       string
-  description:   string
-  thumbnail_url: string
-  detail_img_1:  string
-  detail_img_2:  string
-  detail_img_3:  string
-  supply_price:  string
+  summary:            string
+  description:          string
+  mobile_description: string
+  supply_price:         string
   sale_price:    string
   stock_qty:     string
   min_order_qty: string
@@ -96,13 +94,10 @@ const EMPTY_FORM: FormState = {
   product_name:  '',
   brand:         '',
   category_id:   '',
-  summary:       '',
-  description:   '',
-  thumbnail_url: '',
-  detail_img_1:  '',
-  detail_img_2:  '',
-  detail_img_3:  '',
-  supply_price:  '0',
+  summary:            '',
+  description:          '',
+  mobile_description: '',
+  supply_price:         '0',
   sale_price:    '0',
   stock_qty:     '99999',
   min_order_qty: '1',
@@ -186,6 +181,9 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const [form,     setForm]     = useState<FormState>(EMPTY_FORM)
   const [shipping, setShipping] = useState<ScmShippingState>(EMPTY_SHIP)
   const [options,  setOptions]  = useState<OptionDraft[]>([])
+  const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([])
+  const [detailUrls, setDetailUrls] = useState<string[]>([])
+  const [mobileDescriptionOpen, setMobileDescriptionOpen] = useState(false)
 
   // ── 카테고리 3단 ─────────────────────────
   const [cats1, setCats1] = useState<Category[]>([])   // 대분류
@@ -268,10 +266,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           category_id: String(product.category_id ?? product.category_id_2 ?? product.category_id_1 ?? ''),
           summary: String(product.summary ?? ''),
           description: String(product.description ?? ''),
-          thumbnail_url: String(product.thumbnail_url ?? ''),
-          detail_img_1: detailUrls[0] ?? '',
-          detail_img_2: detailUrls[1] ?? '',
-          detail_img_3: detailUrls[2] ?? '',
+          mobile_description: String(product.mobile_description ?? ''),
           supply_price: String(product.supply_price ?? 0),
           sale_price: String(product.sale_price ?? 0),
           stock_qty: String(product.stock_qty ?? 0),
@@ -281,6 +276,10 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           sale_start_at: toDatetimeLocalInput(product.sale_start_at),
           sale_end_at: toDatetimeLocalInput(product.sale_end_at),
         })
+
+        setThumbnailUrls(product.thumbnail_url ? [String(product.thumbnail_url)] : [])
+        setDetailUrls(detailUrls)
+        if (product.mobile_description) setMobileDescriptionOpen(true)
 
         const rawCond = product.sc_condition_type ?? product.sc_condition
         const sc_condition: ScmShippingState['sc_condition'] =
@@ -318,20 +317,22 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const handleSubmit = async () => {
     if (!form.product_name.trim()) { toast('상품명을 입력하세요.', 'error'); return }
     if (!saleN || saleN <= 0)       { toast('판매가를 확인하세요.', 'error'); return }
+    if (thumbnailUrls.length === 0) { toast('대표 이미지를 업로드해 주세요.', 'error'); return }
 
     setSaving(true)
     try {
-      const detailUrls = [form.detail_img_1, form.detail_img_2, form.detail_img_3]
-        .filter(u => u.trim())
+      const descHtml = isRichHtmlEmpty(form.description) ? null : form.description
+      const mobileHtml = isRichHtmlEmpty(form.mobile_description) ? null : form.mobile_description
 
       const payload: Record<string, any> = {
         product_name:  form.product_name.trim(),
         brand:         form.brand.trim() || null,
         category_id:   form.category_id || null,
         summary:       form.summary.trim() || null,
-        description:   form.description.trim() || null,
-        thumbnail_url: form.thumbnail_url.trim() || null,
-        detail_images: detailUrls,
+        description:   descHtml,
+        mobile_description: mobileHtml,
+        thumbnail_url: thumbnailUrls[0]?.trim() || null,
+        detail_images: detailUrls.filter(u => u.trim()),
         supply_price:  supplyN,
         sale_price:    saleN,
         stock_qty:     parseInt(form.stock_qty, 10) || 0,
@@ -620,21 +621,21 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
 
         {/* ⑧ 대표 이미지 */}
         <Box>
-          <Typography variant='subtitle2' sx={{ mb: 1, color: 'text.secondary' }}>
+          <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>
             ⑧ 대표 이미지
-            <Typography component='span' variant='caption' sx={{ ml: 1, color: 'error.main' }}>* URL 직접 입력</Typography>
+            <Typography component='span' variant='caption' sx={{ ml: 1, color: 'error.main' }}>* 필수</Typography>
           </Typography>
-          <CustomTextField fullWidth size='small' label='대표 이미지 URL'
-            value={form.thumbnail_url}
-            placeholder='https://example.com/image.jpg'
-            onChange={e => setForm(f => ({ ...f, thumbnail_url: e.target.value }))} />
-          {form.thumbnail_url && (
-            <Box sx={{ mt: 1 }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={form.thumbnail_url} alt='preview'
-                style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, border: '1px solid #ddd' }}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-            </Box>
+          <ImageUploader
+            bucket='products'
+            folder='thumbnails'
+            value={thumbnailUrls}
+            onChange={setThumbnailUrls}
+            maxCount={1}
+          />
+          {thumbnailUrls.length === 0 && (
+            <Typography variant='caption' color='error' sx={{ mt: 0.5, display: 'block' }}>
+              대표 이미지를 업로드해 주세요.
+            </Typography>
           )}
         </Box>
 
@@ -644,16 +645,17 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         <Box>
           <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>
             ⑨ 상세 이미지
-            <Typography component='span' variant='caption' color='text.secondary' sx={{ ml: 1 }}>(최대 3개 URL)</Typography>
+            <Typography component='span' variant='caption' color='text.secondary' sx={{ ml: 1 }}>
+              (최대 10장)
+            </Typography>
           </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {(['detail_img_1', 'detail_img_2', 'detail_img_3'] as const).map((key, i) => (
-              <CustomTextField key={key} fullWidth size='small' label={`상세 이미지 ${i + 1}`}
-                value={form[key]}
-                placeholder='https://example.com/detail.jpg'
-                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
-            ))}
-          </Box>
+          <ImageUploader
+            bucket='products'
+            folder='detail'
+            value={detailUrls}
+            onChange={setDetailUrls}
+            maxCount={10}
+          />
         </Box>
 
         <Divider />
@@ -664,12 +666,43 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           <CustomTextField fullWidth size='small' label='한줄 요약 (summary)' sx={{ mb: 2 }}
             value={form.summary}
             onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} />
-          <TextField
-            fullWidth multiline rows={8} label='상품 상세설명'
-            value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            placeholder='상품 상세설명을 입력하세요.'
-            size='small' />
+          <Box>
+            <Typography variant='caption' color='text.secondary' sx={{ mb: 0.5, display: 'block' }}>
+              상품 상세설명 (이미지 삽입 가능 — Supabase products/editor 저장)
+            </Typography>
+            <RichEditor
+              value={form.description}
+              onChange={v => setForm(f => ({ ...f, description: v }))}
+              placeholder='상품 상세설명을 입력하세요.'
+              minHeight={240}
+              uploadBucket='products'
+              uploadFolder='editor'
+            />
+          </Box>
+          <Box sx={{ mt: 2 }}>
+            <Button
+              size='small'
+              variant='text'
+              onClick={() => setMobileDescriptionOpen(o => !o)}
+              sx={{ mb: mobileDescriptionOpen ? 1 : 0 }}
+              endIcon={<i className={mobileDescriptionOpen ? 'tabler-chevron-up' : 'tabler-chevron-down'} />}
+            >
+              모바일 상세설명 {mobileDescriptionOpen ? '접기' : '펼치기'}
+            </Button>
+            <Collapse in={mobileDescriptionOpen}>
+              <Typography variant='caption' color='text.secondary' sx={{ mb: 0.5, display: 'block' }}>
+                모바일 앱·좁은 화면용 상세 (비우면 PC 상세와 동일 노출 정책은 쇼핑몰 설정에 따름)
+              </Typography>
+              <RichEditor
+                value={form.mobile_description}
+                onChange={v => setForm(f => ({ ...f, mobile_description: v }))}
+                placeholder='모바일용 상세설명'
+                minHeight={200}
+                uploadBucket='products'
+                uploadFolder='editor'
+              />
+            </Collapse>
+          </Box>
         </Box>
 
         {/* 저장 버튼 */}
