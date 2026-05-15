@@ -58,6 +58,7 @@ interface FormState {
   product_name:  string
   brand:         string
   category_id:   string
+  supplier_product_code: string
   summary:            string
   description:          string
   mobile_description: string
@@ -94,6 +95,7 @@ const EMPTY_FORM: FormState = {
   product_name:  '',
   brand:         '',
   category_id:   '',
+  supplier_product_code: '',
   summary:            '',
   description:          '',
   mobile_description: '',
@@ -184,6 +186,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([])
   const [detailUrls, setDetailUrls] = useState<string[]>([])
   const [mobileDescriptionOpen, setMobileDescriptionOpen] = useState(false)
+  const [productCode, setProductCode] = useState('')
 
   // ── 카테고리 3단 ─────────────────────────
   const [cats1, setCats1] = useState<Category[]>([])   // 대분류
@@ -260,10 +263,12 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           .filter(i => i?.image_type !== 'THUMBNAIL' && i?.image_url)
           .map(i => String(i.image_url))
 
+        setProductCode(String(product.product_code ?? ''))
         setForm({
           product_name: String(product.product_name ?? ''),
           brand: String(product.brand ?? ''),
           category_id: String(product.category_id ?? product.category_id_2 ?? product.category_id_1 ?? ''),
+          supplier_product_code: String(product.supplier_product_code ?? product.supplier_product_no ?? ''),
           summary: String(product.summary ?? ''),
           description: String(product.description ?? ''),
           mobile_description: String(product.mobile_description ?? ''),
@@ -328,6 +333,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         product_name:  form.product_name.trim(),
         brand:         form.brand.trim() || null,
         category_id:   form.category_id || null,
+        supplier_product_code: form.supplier_product_code.trim() || null,
         summary:       form.summary.trim() || null,
         description:   descHtml,
         mobile_description: mobileHtml,
@@ -478,10 +484,19 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
                 placeholder='브랜드명 입력 (미입력 가능)'
                 onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} />
             </Grid>
+            {mode === 'edit' && (
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <CustomTextField fullWidth size='small' label='상품코드 (자사)' disabled
+                  value={productCode || '—'}
+                  helperText='8자리 자사코드. 시스템 자동 생성·수정 불가' />
+              </Grid>
+            )}
             <Grid size={{ xs: 12, sm: 6 }}>
-              <CustomTextField fullWidth size='small' label='상품코드' disabled
-                value={mode === 'create' ? '저장 후 자동 생성' : productId ?? ''}
-                helperText='시스템 자동 생성. 수정 불가' />
+              <CustomTextField fullWidth size='small' label='공급사 상품코드'
+                value={form.supplier_product_code}
+                placeholder='공급사/KMC 상품코드 (선택)'
+                helperText={mode === 'create' ? '자사 상품코드는 저장 후 자동 생성됩니다' : undefined}
+                onChange={e => setForm(f => ({ ...f, supplier_product_code: e.target.value }))} />
             </Grid>
             <Grid size={12}>
               <CustomTextField required fullWidth size='small' label='상품명'
