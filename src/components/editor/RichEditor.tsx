@@ -2,10 +2,11 @@
 // KN541 공용 리치 에디터
 // 2026-04-15: 이미지 업로드 기능 추가
 // 2026-04-22: fix — isRichHtmlEmpty가 이미지를 빈 값으로 판정하여 edit 모드에서 이미지 미출력 수정
+// 2026-05-15: fix — @tiptap/core → @tiptap/react 변경 (Vercel pnpm strict 대응)
 
 import { useEffect, useRef, useState } from 'react'
 import { useEditor, EditorContent, useEditorState } from '@tiptap/react'
-import type { Editor } from '@tiptap/core'
+import type { Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import ImageExtension from '@tiptap/extension-image'
 import Placeholder from '@tiptap/extension-placeholder'
