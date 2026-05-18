@@ -74,7 +74,8 @@ const COURIER_LIST = [
 ]
 
 const SEARCH_TYPES = [
-  { label: '주문번호', value: 'order_no'    },
+  { label: '회원번호', value: 'member_no' },
+  { label: '주문번호', value: 'order_no' },
   { label: '주문자명', value: 'member_name' },
 ]
 
@@ -198,7 +199,7 @@ export default function OrdersView() {
             sx={{ minWidth: 110 }}>
             {SEARCH_TYPES.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
           </CustomTextField>
-          <CustomTextField size='small' placeholder='검색어 입력' value={keyword}
+          <CustomTextField size='small' placeholder='회원번호 · 주문번호 · 주문자명' value={keyword}
             onChange={e => setKeyword(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
             sx={{ flex: 1, maxWidth: 280 }} />
