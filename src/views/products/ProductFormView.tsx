@@ -12,7 +12,7 @@
  *  - CategorySelect → API 기반 3단 직접 구현
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
 import Box from '@mui/material/Box'
@@ -37,6 +37,7 @@ import CustomTextField from '@core/components/mui/TextField'
 import ImageUploader from '@/components/upload/ImageUploader'
 import RichEditor, { isRichHtmlEmpty } from '@/components/editor/RichEditor'
 import { scmGet, scmPost, scmPatch, publicGet } from '@/lib/scmApi'
+import { useSystemCodes } from '@/hooks/useSystemCodes'
 import StockOrderSection from './sections/StockOrderSection'
 import SaleScheduleSection from './sections/SaleScheduleSection'
 import ShippingPolicySection from './sections/ShippingPolicySection'
@@ -53,6 +54,23 @@ interface Category {
   parent_id: string | null
   depth: number
 }
+
+interface CatNode {
+  id: string
+  category_name: string
+  children?: CatNode[]
+}
+
+const mapCatNodes = (nodes: CatNode[] | undefined): Category[] =>
+  (nodes ?? []).map(c => ({
+    id: c.id,
+    category_name: c.category_name,
+    parent_id: null,
+    depth: 0,
+  }))
+
+/** DB numeric → API 문자열 대응 */
+const toPriceStr = (v: unknown) => String(Number(v) || 0)
 
 interface FormState {
   product_name:  string
@@ -187,6 +205,11 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const [detailUrls, setDetailUrls] = useState<string[]>([])
   const [mobileDescriptionOpen, setMobileDescriptionOpen] = useState(false)
   const [productCode, setProductCode] = useState('')
+  const [approvalStatus, setApprovalStatus] = useState('PENDING')
+
+  const categoryInitRef = useRef(false)
+
+  const isApprovedLocked = mode === 'edit' && approvalStatus === 'APPROVED'
 
   // ── 카테고리 3단 ─────────────────────────
   const [cats1, setCats1] = useState<Category[]>([])   // 대분류
@@ -194,6 +217,13 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const [cats3, setCats3] = useState<Category[]>([])   // 소분류
   const [sel1,  setSel1]  = useState('')
   const [sel2,  setSel2]  = useState('')
+  const [taxType, setTaxType] = useState('0')
+
+  const { codes: taxCodes } = useSystemCodes(['tax_type'])
+  const taxTypeOptions = (taxCodes['tax_type'] ?? []).map(c => ({
+    value: c.code_value || c.code,
+    label: c.code_name,
+  }))
 
   // ── UI ──────────────────────────────────
   const [loading, setLoading] = useState(mode === 'edit')
@@ -208,39 +238,59 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const toast = useCallback((msg: string, sev: 'success' | 'error' = 'success') =>
     setSnack({ open: true, msg, sev }), [])
 
-  // ── 대분류 로드 ───────────────────────────
+  // ── 대분류 로드 (GET /categories → depth=1) ─────
   useEffect(() => {
-    void publicGet<{ items?: Category[] }>('/categories?parent_id=null&size=100')
-      .then(d => setCats1(d.items ?? []))
+    void publicGet<{ items?: Array<CatNode & { depth?: number }> }>('/categories')
+      .then(d => {
+        const items = d?.items ?? []
+        const depth1 = items.filter(c => (c.depth ?? 1) === 1)
+        setCats1(mapCatNodes(depth1.length > 0 ? depth1 : items))
+      })
       .catch(() => setCats1([]))
 
-    // 공급사명 조회
-    const uid = typeof window !== 'undefined' ? localStorage.getItem('user_id') : ''
     const uname = typeof window !== 'undefined' ? localStorage.getItem('username') : ''
+    const uid = typeof window !== 'undefined' ? localStorage.getItem('user_id') : ''
     setSupplierName(uname ?? uid ?? '본인')
   }, [])
 
-  // ── 중분류 로드 ───────────────────────────
+  // ── 중분류 로드 (GET /categories/{id} → children) ──
   useEffect(() => {
-    if (!sel1) { setCats2([]); setCats3([]); setSel2(''); setForm(f => ({ ...f, category_id: '' })); return }
-    void publicGet<{ items?: Category[] }>(`/categories?parent_id=${encodeURIComponent(sel1)}&size=100`)
-      .then(d => setCats2(d.items ?? []))
+    if (!sel1) {
+      setCats2([])
+      setCats3([])
+      setSel2('')
+      if (!categoryInitRef.current) {
+        setForm(f => ({ ...f, category_id: '' }))
+      }
+      return
+    }
+    if (categoryInitRef.current) return
+    void publicGet<CatNode>(`/categories/${encodeURIComponent(sel1)}`)
+      .then(node => setCats2(mapCatNodes(node?.children)))
       .catch(() => setCats2([]))
-    setCats3([]); setSel2(''); setForm(f => ({ ...f, category_id: '' }))
+    setCats3([])
+    setSel2('')
+    setForm(f => ({ ...f, category_id: '' }))
   }, [sel1])
 
   // ── 소분류 로드 ───────────────────────────
   useEffect(() => {
-    if (!sel2) { setCats3([]); setForm(f => ({ ...f, category_id: '' })); return }
-    void publicGet<{ items?: Category[] }>(`/categories?parent_id=${encodeURIComponent(sel2)}&size=100`)
-      .then(d => {
-        const items: Category[] = d.items ?? []
+    if (!sel2) {
+      setCats3([])
+      if (!sel1 && !categoryInitRef.current) {
+        setForm(f => ({ ...f, category_id: '' }))
+      }
+      return
+    }
+    if (categoryInitRef.current) return
+    void publicGet<CatNode>(`/categories/${encodeURIComponent(sel2)}`)
+      .then(node => {
+        const items = mapCatNodes(node?.children)
         setCats3(items)
-        // 소분류가 없으면 중분류 자체를 category_id로
         if (items.length === 0) setForm(f => ({ ...f, category_id: sel2 }))
+        else setForm(f => ({ ...f, category_id: '' }))
       })
       .catch(() => setCats3([]))
-    setForm(f => ({ ...f, category_id: '' }))
   }, [sel2])
 
   // ── edit 모드 데이터 로드 ─────────────────
@@ -264,16 +314,44 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           .map(i => String(i.image_url))
 
         setProductCode(String(product.product_code ?? ''))
+        setTaxType(String(product.tax_type ?? '0'))
+
+        setApprovalStatus(String(product.approval_status ?? 'PENDING'))
+
+        const cid1 = product.category_id_1 ? String(product.category_id_1) : ''
+        const cid2 = product.category_id_2 ? String(product.category_id_2) : ''
+        const leafId = String(product.category_id ?? product.category_id_2 ?? product.category_id_1 ?? '')
+
+        categoryInitRef.current = true
+        try {
+          if (cid1) {
+            const n1 = await publicGet<CatNode>(`/categories/${encodeURIComponent(cid1)}`)
+            setCats2(mapCatNodes(n1?.children))
+            setSel1(cid1)
+          }
+          if (cid2) {
+            const n2 = await publicGet<CatNode>(`/categories/${encodeURIComponent(cid2)}`)
+            const sub = mapCatNodes(n2?.children)
+            setCats3(sub)
+            setSel2(cid2)
+            if (sub.length === 0 && leafId === cid2) {
+              setForm(f => ({ ...f, category_id: cid2 }))
+            }
+          }
+        } finally {
+          categoryInitRef.current = false
+        }
+
         setForm({
           product_name: String(product.product_name ?? ''),
           brand: String(product.brand ?? ''),
-          category_id: String(product.category_id ?? product.category_id_2 ?? product.category_id_1 ?? ''),
+          category_id: leafId,
           supplier_product_code: String(product.supplier_product_code ?? product.supplier_product_no ?? ''),
           summary: String(product.summary ?? ''),
           description: String(product.description ?? ''),
           mobile_description: String(product.mobile_description ?? ''),
-          supply_price: String(product.supply_price ?? 0),
-          sale_price: String(product.sale_price ?? 0),
+          supply_price: toPriceStr(product.supply_price ?? product.original_supply_price ?? 0),
+          sale_price: toPriceStr(product.sale_price ?? product.consumer_price ?? 0),
           stock_qty: String(product.stock_qty ?? 0),
           min_order_qty: String(product.min_order_qty ?? 1),
           max_order_qty: product.max_order_qty != null ? String(product.max_order_qty) : '',
@@ -320,7 +398,12 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
 
   // ── 제출 ─────────────────────────────────
   const handleSubmit = async () => {
+    if (isApprovedLocked) {
+      toast('승인 완료(APPROVED) 상품은 공급사에서 수정할 수 없습니다. 변경이 필요하면 관리자에게 문의하세요.', 'error')
+      return
+    }
     if (!form.product_name.trim()) { toast('상품명을 입력하세요.', 'error'); return }
+    if (!form.category_id)         { toast('카테고리를 선택하세요.', 'error'); return }
     if (!saleN || saleN <= 0)       { toast('판매가를 확인하세요.', 'error'); return }
     if (thumbnailUrls.length === 0) { toast('대표 이미지를 업로드해 주세요.', 'error'); return }
 
@@ -349,6 +432,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         delivery_days: parseInt(shipping.delivery_days, 10) || 3,
         sale_start_at: form.sale_start_at || null,
         sale_end_at:   form.sale_end_at   || null,
+        tax_type:      parseInt(taxType, 10) || 0,
       }
 
       if (mode === 'create') {
@@ -356,12 +440,33 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         toast(`등록 완료! (승인 대기)`, 'success')
         setTimeout(() => router.push('/products'), 1500)
       } else if (productId) {
-        await scmPatch<any>(`/scm/products/${productId}`, payload)
+        const patchBody = {
+          product_name: payload.product_name,
+          supplier_product_code: payload.supplier_product_code,
+          summary: payload.summary,
+          description: payload.description,
+          mobile_description: payload.mobile_description,
+          thumbnail_url: payload.thumbnail_url,
+          detail_images: payload.detail_images,
+          supply_price: supplyN,
+          sale_price: saleN,
+          stock_qty: payload.stock_qty,
+          min_order_qty: payload.min_order_qty,
+          max_order_qty: payload.max_order_qty,
+          sc_price: payload.sc_price,
+          delivery_days: payload.delivery_days,
+        }
+        await scmPatch<any>(`/scm/products/${productId}`, patchBody)
         toast('저장되었습니다. (재심사 대기)', 'success')
         router.refresh()
       }
     } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : '저장 중 오류가 발생했습니다.', 'error')
+      const msg = e instanceof Error ? e.message : '저장 중 오류가 발생했습니다.'
+      if (msg.includes('APPROVED') || msg.includes('승인')) {
+        toast('승인 완료 상품은 수정할 수 없습니다. (PENDING/REJECTED만 수정 가능)', 'error')
+      } else {
+        toast(msg, 'error')
+      }
     } finally {
       setSaving(false)
     }
@@ -425,10 +530,33 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
             <i className='tabler-clock' style={{ fontSize: 18, color: 'var(--mui-palette-warning-main)' }} />
             <Box>
               <Typography variant='caption' color='text.secondary' display='block'>승인 상태</Typography>
-              <Typography variant='body2' fontWeight={700} color='warning.main'>승인대기 (관리자 검토 중)</Typography>
+              <Typography
+                variant='body2'
+                fontWeight={700}
+                color={
+                  approvalStatus === 'APPROVED'
+                    ? 'success.main'
+                    : approvalStatus === 'REJECTED'
+                      ? 'error.main'
+                      : 'warning.main'
+                }
+              >
+                {approvalStatus === 'APPROVED'
+                  ? '승인완료 (수정 불가)'
+                  : approvalStatus === 'REJECTED'
+                    ? '반려 (수정 후 재심사)'
+                    : '승인대기 (관리자 검토 중)'}
+              </Typography>
             </Box>
           </Box>
         </Box>
+
+        {isApprovedLocked && (
+          <Alert severity='info'>
+            이 상품은 <strong>승인완료(APPROVED)</strong> 상태입니다. 공급사 계정에서는 내용을 변경할 수 없습니다.
+            가격·카테고리 변경이 필요하면 관리자에게 요청해 주세요.
+          </Alert>
+        )}
 
         {/* ② 기본정보 */}
         <Box>
@@ -466,11 +594,23 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
                   </FormControl>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <FormControl fullWidth size='small' disabled={!sel2 || cats3.length === 0}>
+                  <FormControl fullWidth size='small' disabled={!sel2}>
                     <InputLabel>소분류</InputLabel>
-                    <Select label='소분류' value={form.category_id}
-                      onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))}>
-                      <MenuItem value=''><em>{cats3.length === 0 && sel2 ? '(없음)' : '선택'}</em></MenuItem>
+                    <Select
+                      label='소분류'
+                      value={
+                        cats3.length === 0 && sel2 && form.category_id === sel2
+                          ? sel2
+                          : form.category_id
+                      }
+                      onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))}
+                    >
+                      <MenuItem value=''><em>{cats3.length === 0 && sel2 ? '(소분류 없음 — 중분류 적용)' : '선택'}</em></MenuItem>
+                      {cats3.length === 0 && sel2 ? (
+                        <MenuItem value={sel2}>
+                          {cats2.find(c => c.id === sel2)?.category_name ?? '중분류'}
+                        </MenuItem>
+                      ) : null}
                       {cats3.map(c => <MenuItem key={c.id} value={c.id}>{c.category_name}</MenuItem>)}
                     </Select>
                   </FormControl>
@@ -526,9 +666,26 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
                 helperText='공급사 공급 가격' />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <CustomTextField fullWidth size='small' label='세금유형' disabled
-                value='과세 (10%)'
-                helperText='일반상품 기본 과세' />
+              <CustomTextField
+                select
+                fullWidth
+                size='small'
+                label='세금유형'
+                value={taxType}
+                onChange={e => setTaxType(e.target.value)}
+                helperText={taxTypeOptions.length ? 'system_codes tax_type' : '과세/면세 선택'}
+              >
+                {taxTypeOptions.length > 0 ? (
+                  taxTypeOptions.map(o => (
+                    <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                  ))
+                ) : (
+                  <>
+                    <MenuItem value='0'>과세 (10%)</MenuItem>
+                    <MenuItem value='1'>면세</MenuItem>
+                  </>
+                )}
+              </CustomTextField>
             </Grid>
             <Grid size={12}>
               <Typography variant='body2' color={profit >= 0 ? 'primary' : 'error'}>
@@ -723,9 +880,13 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         {/* 저장 버튼 */}
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Button variant='outlined' onClick={() => router.push('/products')}>목록</Button>
-          <Button variant='contained' onClick={() => void handleSubmit()} disabled={saving}
-            startIcon={saving ? <CircularProgress size={16} color='inherit' /> : undefined}>
-            {mode === 'create' ? '등록하기' : '저장하기'}
+          <Button
+            variant='contained'
+            onClick={() => void handleSubmit()}
+            disabled={saving || isApprovedLocked}
+            startIcon={saving ? <CircularProgress size={16} color='inherit' /> : undefined}
+          >
+            {mode === 'create' ? '등록하기' : isApprovedLocked ? '승인완료 — 수정 불가' : '저장하기'}
           </Button>
         </Box>
 
