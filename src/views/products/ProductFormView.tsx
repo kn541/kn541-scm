@@ -41,6 +41,7 @@ import { useSystemCodes } from '@/hooks/useSystemCodes'
 import StockOrderSection from './sections/StockOrderSection'
 import SaleScheduleSection from './sections/SaleScheduleSection'
 import ShippingPolicySection from './sections/ShippingPolicySection'
+import OptionGroupSection from './sections/OptionGroupSection'
 import type { ShippingState as ShippingPolicyValue } from './sections/productFormTypes'
 
 // ─────────────────────────────────────────
@@ -751,6 +752,17 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
             control={<Switch checked={form.is_option}
               onChange={e => setForm(f => ({ ...f, is_option: e.target.checked }))} />}
             label='옵션 사용' />
+          {form.is_option && productId && (
+            <Box sx={{ mt: 2, mb: 1, p: 2, border: '1px dashed', borderColor: 'primary.main', borderRadius: 2 }}>
+              <Typography variant='body2' color='primary.main' sx={{ mb: 1, fontWeight: 600 }}>
+                2단 조합 옵션
+              </Typography>
+              <OptionGroupSection
+                productId={productId}
+                onNotify={(message, severity) => toast(message, severity)}
+              />
+            </Box>
+          )}
           {form.is_option && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
               {options.map(d => (

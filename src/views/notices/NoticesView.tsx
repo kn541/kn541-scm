@@ -23,6 +23,8 @@ interface Notice {
   id: number
   title: string
   content?: string
+  notice_content?: string
+  body?: string
   is_pinned: boolean
   created_at: string
 }
@@ -32,13 +34,17 @@ interface NoticesResponse {
   total: number
 }
 
+function pickNoticeBody(res: Notice | Record<string, unknown>): string {
+  const r = res as Record<string, unknown>
+  return String(r.content ?? r.notice_content ?? r.body ?? '') || '(내용 없음)'
+}
+
 export default function NoticesView() {
   const [notices, setNotices] = useState<Notice[]>([])
-  const [total, setTotal]     = useState(0)
-  const [page, setPage]       = useState(1)
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState('')
-  // S-7: 본문 로드 캐시 (id → content)
+  const [error, setError] = useState('')
   const [contentCache, setContentCache] = useState<Record<string, string>>({})
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const SIZE = 20
@@ -57,17 +63,16 @@ export default function NoticesView() {
     }
   }, [page])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { void load() }, [load])
 
-  // S-7: 아코디언 펼칠 때 상세 API로 본문 로드
   const handleAccordionChange = useCallback(async (noticeId: number, expanded: boolean) => {
     if (!expanded) return
     const key = String(noticeId)
-    if (contentCache[key]) return // 이미 로드됨
+    if (contentCache[key]) return
     setLoadingId(key)
     try {
       const res = await scmGet<Notice>(`/scm/notices/${noticeId}`)
-      setContentCache(prev => ({ ...prev, [key]: res.content ?? '(내용 없음)' }))
+      setContentCache(prev => ({ ...prev, [key]: pickNoticeBody(res) }))
     } catch {
       setContentCache(prev => ({ ...prev, [key]: '본문을 불러올 수 없습니다.' }))
     } finally {
@@ -75,22 +80,26 @@ export default function NoticesView() {
     }
   }, [contentCache])
 
-  if (loading) return (
-    <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
-      <CircularProgress />
-    </Box>
-  )
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+        <CircularProgress />
+      </Box>
+    )
+  }
 
-  if (error) return (
-    <Box>
-      <Typography variant='h5' fontWeight={700} sx={{ mb: 3 }}>공지사항</Typography>
-      <Alert severity='warning' action={
-        <Button size='small' onClick={load}>다시 시도</Button>
-      }>
-        {error}
-      </Alert>
-    </Box>
-  )
+  if (error) {
+    return (
+      <Box>
+        <Typography variant='h5' fontWeight={700} sx={{ mb: 3 }}>공지사항</Typography>
+        <Alert severity='warning' action={
+          <Button size='small' onClick={() => void load()}>다시 시도</Button>
+        }>
+          {error}
+        </Alert>
+      </Box>
+    )
+  }
 
   return (
     <Box>
@@ -110,7 +119,7 @@ export default function NoticesView() {
               return (
                 <Box key={n.id}>
                   <Accordion disableGutters elevation={0}
-                    onChange={(_, expanded) => handleAccordionChange(n.id, expanded)}
+                    onChange={(_, expanded) => void handleAccordionChange(n.id, expanded)}
                     sx={{ '&:before': { display: 'none' } }}>
                     <AccordionSummary
                       expandIcon={<i className='tabler-chevron-down' style={{ fontSize: 18 }} />}
@@ -133,6 +142,11 @@ export default function NoticesView() {
                         <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
                           <CircularProgress size={24} />
                         </Box>
+                      ) : (cachedContent ?? '').includes('<') ? (
+                        <Box
+                          sx={{ '& img': { maxWidth: '100%' }, lineHeight: 1.8 }}
+                          dangerouslySetInnerHTML={{ __html: cachedContent ?? '' }}
+                        />
                       ) : (
                         <Typography variant='body2' sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
                           {cachedContent ?? '로딩 중...'}

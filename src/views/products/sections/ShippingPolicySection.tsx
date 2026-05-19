@@ -18,8 +18,11 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import Collapse from '@mui/material/Collapse'
 import MenuItem from '@mui/material/MenuItem'
 import CustomTextField from '@core/components/mui/TextField'
+import { useSystemCodes } from '@/hooks/useSystemCodes'
 
 import type { ShippingState } from './productFormTypes'
+
+type DeliveryCodeItem = { code: string; code_name: string; code_value: string }
 
 const SC_TYPE_LABELS: Record<number, string> = {
   1: '무료배송',
@@ -62,6 +65,9 @@ export default function ShippingPolicySection({
   sectionLabel = '④ 배송정책',
   mode = 'admin',
 }: Props) {
+  const { codes } = useSystemCodes(['delivery_company'])
+  const deliveryCodes = (codes['delivery_company'] ?? []) as DeliveryCodeItem[]
+
   const scType = Number(value.sc_type) || 1
   const showShippingFee = scType !== 1
   const patch = (partial: Partial<ShippingState>) => onChange({ ...value, ...partial })
@@ -178,12 +184,21 @@ export default function ShippingPolicySection({
               </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
                 <CustomTextField
+                  select
                   fullWidth
                   size='small'
-                  label='배송사 (예: CJ대한통운)'
-                  value={value.delivery_company}
+                  label='배송사'
+                  value={value.delivery_company ?? ''}
                   onChange={e => patch({ delivery_company: e.target.value })}
-                />
+                  slotProps={{ select: { displayEmpty: true } }}
+                >
+                  <MenuItem value=''>미지정</MenuItem>
+                  {deliveryCodes.map(c => (
+                    <MenuItem key={c.code} value={c.code_value || c.code}>
+                      {c.code_name}
+                    </MenuItem>
+                  ))}
+                </CustomTextField>
               </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
                 <CustomTextField

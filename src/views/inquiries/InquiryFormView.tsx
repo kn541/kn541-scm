@@ -33,7 +33,11 @@ export default function InquiryFormView() {
     if (!form.content.trim()) { toast('내용을 입력하세요.', 'error'); return }
     setSaving(true)
     try {
-      await scmPost('/scm/inquiries', form)
+      await scmPost('/scm/inquiries', {
+        title: form.title.trim(),
+        content: form.content.trim(),
+        inquiry_type: form.inquiry_type,
+      })
       toast('문의가 등록됐습니다.')
       setForm({ inquiry_type: '001', title: '', content: '' })
     } catch (e: unknown) {
