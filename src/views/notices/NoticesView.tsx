@@ -1,7 +1,7 @@
 'use client'
 /**
  * KN541 SCM 공지사항
- * FIX: /cs/notices → /scm/notices (백엔드 실제 경로)
+ * FIX(S-7): 아코디언 펼칠 때 GET /scm/notices/{id}로 본문 lazy-load
  */
 import { useState, useEffect, useCallback } from 'react'
 import Box from '@mui/material/Box'
@@ -22,7 +22,7 @@ import { scmGet } from '@/lib/scmApi'
 interface Notice {
   id: number
   title: string
-  content: string
+  content?: string
   is_pinned: boolean
   created_at: string
 }
@@ -38,13 +38,15 @@ export default function NoticesView() {
   const [page, setPage]       = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
+  // S-7: 본문 로드 캐시 (id → content)
+  const [contentCache, setContentCache] = useState<Record<string, string>>({})
+  const [loadingId, setLoadingId] = useState<string | null>(null)
   const SIZE = 20
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      // FIX: /cs/notices → /scm/notices (백엔드 실제 경로)
       const res = await scmGet<NoticesResponse>(`/scm/notices?page=${page}&size=${SIZE}`)
       setNotices(res.items ?? [])
       setTotal(res.total ?? 0)
@@ -56,6 +58,22 @@ export default function NoticesView() {
   }, [page])
 
   useEffect(() => { load() }, [load])
+
+  // S-7: 아코디언 펼칠 때 상세 API로 본문 로드
+  const handleAccordionChange = useCallback(async (noticeId: number, expanded: boolean) => {
+    if (!expanded) return
+    const key = String(noticeId)
+    if (contentCache[key]) return // 이미 로드됨
+    setLoadingId(key)
+    try {
+      const res = await scmGet<Notice>(`/scm/notices/${noticeId}`)
+      setContentCache(prev => ({ ...prev, [key]: res.content ?? '(내용 없음)' }))
+    } catch {
+      setContentCache(prev => ({ ...prev, [key]: '본문을 불러올 수 없습니다.' }))
+    } finally {
+      setLoadingId(null)
+    }
+  }, [contentCache])
 
   if (loading) return (
     <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
@@ -84,35 +102,48 @@ export default function NoticesView() {
               <Typography color='text.secondary'>공지사항이 없습니다.</Typography>
             </Box>
           ) : (
-            notices.map((n, i) => (
-              <Box key={n.id}>
-                <Accordion disableGutters elevation={0}
-                  sx={{ '&:before': { display: 'none' } }}>
-                  <AccordionSummary
-                    expandIcon={<i className='tabler-chevron-down' style={{ fontSize: 18 }} />}
-                    sx={{ px: 4, py: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: 0 }}>
-                      {n.is_pinned && (
-                        <Chip label='공지' size='small' color='primary' sx={{ fontWeight: 700, flexShrink: 0 }} />
+            notices.map((n, i) => {
+              const key = String(n.id)
+              const cachedContent = contentCache[key]
+              const isDetailLoading = loadingId === key
+
+              return (
+                <Box key={n.id}>
+                  <Accordion disableGutters elevation={0}
+                    onChange={(_, expanded) => handleAccordionChange(n.id, expanded)}
+                    sx={{ '&:before': { display: 'none' } }}>
+                    <AccordionSummary
+                      expandIcon={<i className='tabler-chevron-down' style={{ fontSize: 18 }} />}
+                      sx={{ px: 4, py: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: 0 }}>
+                        {n.is_pinned && (
+                          <Chip label='공지' size='small' color='primary' sx={{ fontWeight: 700, flexShrink: 0 }} />
+                        )}
+                        <Typography variant='body2' fontWeight={n.is_pinned ? 700 : 400}
+                          sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                          {n.title}
+                        </Typography>
+                        <Typography variant='caption' color='text.disabled' sx={{ flexShrink: 0 }}>
+                          {n.created_at?.slice(0, 10)}
+                        </Typography>
+                      </Box>
+                    </AccordionSummary>
+                    <AccordionDetails sx={{ px: 4, pb: 3, pt: 0 }}>
+                      {isDetailLoading ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                          <CircularProgress size={24} />
+                        </Box>
+                      ) : (
+                        <Typography variant='body2' sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
+                          {cachedContent ?? '로딩 중...'}
+                        </Typography>
                       )}
-                      <Typography variant='body2' fontWeight={n.is_pinned ? 700 : 400}
-                        sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                        {n.title}
-                      </Typography>
-                      <Typography variant='caption' color='text.disabled' sx={{ flexShrink: 0 }}>
-                        {n.created_at?.slice(0, 10)}
-                      </Typography>
-                    </Box>
-                  </AccordionSummary>
-                  <AccordionDetails sx={{ px: 4, pb: 3, pt: 0 }}>
-                    <Typography variant='body2' sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
-                      {n.content}
-                    </Typography>
-                  </AccordionDetails>
-                </Accordion>
-                {i < notices.length - 1 && <Divider />}
-              </Box>
-            ))
+                    </AccordionDetails>
+                  </Accordion>
+                  {i < notices.length - 1 && <Divider />}
+                </Box>
+              )
+            })
           )}
         </CardContent>
       </Card>

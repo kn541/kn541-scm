@@ -2,6 +2,7 @@
 /**
  * KN541 SCM 문의 등록
  * POST /scm/inquiries
+ * FIX(S-6): inquiry_type 기본값 '001' (CHAR(3) 매칭)
  */
 import { useState } from 'react'
 import Box from '@mui/material/Box'
@@ -20,7 +21,7 @@ import { scmPost } from '@/lib/scmApi'
 import { INQUIRY_TYPE_OPTIONS } from '@/lib/inquiryOptions'
 
 export default function InquiryFormView() {
-  const [form, setForm] = useState({ inquiry_type: 'PRODUCT', title: '', content: '' })
+  const [form, setForm] = useState({ inquiry_type: '001', title: '', content: '' })
   const [saving, setSaving] = useState(false)
   const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' as 'success' | 'error' })
 
@@ -34,7 +35,7 @@ export default function InquiryFormView() {
     try {
       await scmPost('/scm/inquiries', form)
       toast('문의가 등록됐습니다.')
-      setForm({ inquiry_type: 'PRODUCT', title: '', content: '' })
+      setForm({ inquiry_type: '001', title: '', content: '' })
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : '등록 중 오류가 발생했습니다.', 'error')
     } finally { setSaving(false) }
