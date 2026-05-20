@@ -1,8 +1,8 @@
 'use client'
-// KN541 옵션 2단 조합 UI 컴포넌트 (SCM용, Admin과 동일)
+// KN541 옵션 2단 조합 UI 컴포넌트 (SCM용)
 import { useCallback, useEffect, useState } from 'react'
-import { Box, Button, Chip, CircularProgress, IconButton, TextField, Tooltip, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Alert } from '@mui/material'
-import { toast } from 'react-toastify'
+import { Box, Button, Chip, CircularProgress, IconButton, TextField, Tooltip, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Alert, Snackbar } from '@mui/material'
+import MuiAlert from '@mui/material/Alert'
 import { fetchOptionGroups, createOptionGroup, deleteOptionGroup, createOptionValuesBulk, deleteOptionValue, generateCombinations, updateOption, type OptionGroup, type OptionCombination, type OptionGroupsData } from '@/hooks/useOptionGroups'
 
 interface Props { productId: string; disabled?: boolean }
@@ -14,6 +14,8 @@ export default function OptionGroupSection({ productId, disabled }: Props) {
   const [newValues, setNewValues] = useState<Record<string, string>>({})
   const [editingCells, setEditingCells] = useState<Record<string, Record<string, string>>>({})
   const [generating, setGenerating] = useState(false)
+  const [snack, setSnack] = useState<{open:boolean;msg:string;sev:'success'|'error'}>({open:false,msg:'',sev:'success'})
+  const notify = (msg:string, sev:'success'|'error'='success') => setSnack({open:true,msg,sev})
 
   const reload = useCallback(async () => {
     if (!productId) return; setLoading(true)
@@ -22,24 +24,24 @@ export default function OptionGroupSection({ productId, disabled }: Props) {
   useEffect(() => { reload() }, [reload])
 
   const handleAddGroup = async () => {
-    const name = newGroupName.trim(); if (!name) { toast.error('그룹명을 입력하세요'); return }
-    try { await createOptionGroup(productId, name, (data?.groups.length ?? 0)); setNewGroupName(''); toast.success(`옵션그룹 "${name}" 생성`); reload() } catch (e: any) { toast.error(e.message) }
+    const name = newGroupName.trim(); if (!name) { notify('그룹명을 입력하세요','error'); return }
+    try { await createOptionGroup(productId, name, (data?.groups.length ?? 0)); setNewGroupName(''); notify(`옵션그룹 "${name}" 생성`); reload() } catch (e: any) { notify(e.message,'error') }
   }
   const handleDeleteGroup = async (groupId: string, groupName: string) => {
     if (!confirm(`"${groupName}" 그룹과 관련 조합을 모두 삭제하시겠습니까?`)) return
-    try { await deleteOptionGroup(productId, groupId); toast.success('그룹 삭제 완료'); reload() } catch (e: any) { toast.error(e.message) }
+    try { await deleteOptionGroup(productId, groupId); notify('그룹 삭제 완료'); reload() } catch (e: any) { notify(e.message,'error') }
   }
   const handleAddValues = async (groupId: string) => {
-    const raw = (newValues[groupId] || '').trim(); if (!raw) { toast.error('값을 입력하세요 (콤마로 구분)'); return }
+    const raw = (newValues[groupId] || '').trim(); if (!raw) { notify('값을 입력하세요 (콤마로 구분)','error'); return }
     const vals = raw.split(',').map(v => v.trim()).filter(Boolean); if (!vals.length) return
-    try { await createOptionValuesBulk(productId, groupId, vals); setNewValues(prev => ({ ...prev, [groupId]: '' })); toast.success(`${vals.length}개 값 추가 완료`); reload() } catch (e: any) { toast.error(e.message) }
+    try { await createOptionValuesBulk(productId, groupId, vals); setNewValues(prev => ({ ...prev, [groupId]: '' })); notify(`${vals.length}개 값 추가 완료`); reload() } catch (e: any) { notify(e.message,'error') }
   }
   const handleDeleteValue = async (valueId: string) => {
-    try { await deleteOptionValue(productId, valueId); toast.success('값 삭제 완료'); reload() } catch (e: any) { toast.error(e.message) }
+    try { await deleteOptionValue(productId, valueId); notify('값 삭제 완료'); reload() } catch (e: any) { notify(e.message,'error') }
   }
   const handleGenerate = async () => {
     setGenerating(true)
-    try { const result = await generateCombinations(productId, 0, 0); toast.success(result.message); reload() } catch (e: any) { toast.error(e.message) }
+    try { const result = await generateCombinations(productId, 0, 0); notify(result.message); reload() } catch (e: any) { notify(e.message,'error') }
     setGenerating(false)
   }
   const handleCellChange = (optId: string, field: string, value: string) => {
@@ -54,7 +56,7 @@ export default function OptionGroupSection({ productId, disabled }: Props) {
       await updateOption(productId, optId, payload)
       setEditingCells(prev => { const next = { ...prev }; if (next[optId]) { delete next[optId][field]; if (!Object.keys(next[optId]).length) delete next[optId] }; return next })
       reload()
-    } catch (e: any) { toast.error(e.message) }
+    } catch (e: any) { notify(e.message,'error') }
   }
 
   if (loading && !data) return <Box sx={{ p: 2, textAlign: 'center' }}><CircularProgress size={24} /></Box>
@@ -130,6 +132,9 @@ export default function OptionGroupSection({ productId, disabled }: Props) {
           </TableContainer>
         </>
       )}
+      <Snackbar open={snack.open} autoHideDuration={3000} onClose={() => setSnack(s => ({...s,open:false}))} anchorOrigin={{vertical:'bottom',horizontal:'center'}}>
+        <MuiAlert severity={snack.sev} variant="filled" onClose={() => setSnack(s => ({...s,open:false}))}>{snack.msg}</MuiAlert>
+      </Snackbar>
     </Box>
   )
 }
