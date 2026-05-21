@@ -37,6 +37,7 @@ import CustomTextField from '@core/components/mui/TextField'
 import ImageUploader from '@/components/upload/ImageUploader'
 import RichEditor, { isRichHtmlEmpty } from '@/components/editor/RichEditor'
 import { scmGet, scmPost, scmPatch, publicGet } from '@/lib/scmApi'
+import { updateOption, type LegacyOption } from '@/hooks/useOptionGroups'
 import { useSystemCodes } from '@/hooks/useSystemCodes'
 import StockOrderSection from './sections/StockOrderSection'
 import SaleScheduleSection from './sections/SaleScheduleSection'
@@ -105,9 +106,72 @@ interface ScmShippingState {
 
 interface OptionDraft {
   key:         string
+  /** DB product_options.id — 수정 시 PATCH에 사용 */
+  id?:         string
   option_name: string
+  option_group?: string
   add_price:   string
   stock_qty:   string
+}
+
+interface OptionGroupsLoad {
+  option_mode?: string
+  legacy_options?: LegacyOption[]
+}
+
+function mapLegacyToDrafts(rows: LegacyOption[]): OptionDraft[] {
+  return rows.map(o => ({
+    key: o.id,
+    id: o.id,
+    option_name: String(o.option_name ?? ''),
+    option_group: o.option_group != null ? String(o.option_group) : undefined,
+    add_price: String(o.add_price ?? 0),
+    stock_qty: String(o.stock_qty ?? 0),
+  }))
+}
+
+async function loadLegacyOptionDrafts(productId: string): Promise<OptionDraft[]> {
+  try {
+    const data = await scmGet<OptionGroupsLoad>(
+      `/products/${encodeURIComponent(productId)}/option-groups`
+    )
+    const legacy = data?.legacy_options ?? []
+    if (legacy.length > 0) return mapLegacyToDrafts(legacy)
+  } catch {
+    /* fallback below */
+  }
+  try {
+    const optData = await scmGet<{ items?: LegacyOption[] }>(
+      `/products/${encodeURIComponent(productId)}/options`
+    )
+    const items = (optData?.items ?? []).filter(
+      o => (o as { value1_id?: string | null }).value1_id == null
+        && (o as { value2_id?: string | null }).value2_id == null
+    )
+    return mapLegacyToDrafts(items)
+  } catch {
+    return []
+  }
+}
+
+async function persistLegacyOptions(productId: string, drafts: OptionDraft[]) {
+  for (const d of drafts) {
+    const name = d.option_name.trim()
+    if (!name) continue
+    const body = {
+      option_name: name,
+      add_price: parseFloat(d.add_price) || 0,
+      stock_qty: parseInt(d.stock_qty, 10) || 0,
+    }
+    if (d.id) {
+      await updateOption(productId, d.id, body)
+    } else {
+      await scmPost(`/products/${encodeURIComponent(productId)}/options`, {
+        ...body,
+        sort_order: 0,
+      })
+    }
+  }
 }
 
 const EMPTY_FORM: FormState = {
@@ -134,7 +198,7 @@ const EMPTY_SHIP: ScmShippingState = {
   sc_minimum:    '',
   sc_condition:  'amount',
   sc_qty:        '1',
-  delivery_days: '3',
+  delivery_days: '2',
   return_fee:    '0',
   exchange_fee:  '0',
   delivery_co:   '',
@@ -239,13 +303,12 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const toast = useCallback((msg: string, sev: 'success' | 'error' = 'success') =>
     setSnack({ open: true, msg, sev }), [])
 
-  // ── 대분류 로드 (GET /categories → depth=1) ─────
+  // ── 대분류 로드 (GET /categories — 루트 노드 전체, 1뎁스·사전예약·밸류업 포함) ─────
   useEffect(() => {
     void publicGet<{ items?: Array<CatNode & { depth?: number }> }>('/categories')
       .then(d => {
         const items = d?.items ?? []
-        const depth1 = items.filter(c => (c.depth ?? 1) === 1)
-        setCats1(mapCatNodes(depth1.length > 0 ? depth1 : items))
+        setCats1(mapCatNodes(items))
       })
       .catch(() => setCats1([]))
 
@@ -267,11 +330,20 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
     }
     if (categoryInitRef.current) return
     void publicGet<CatNode>(`/categories/${encodeURIComponent(sel1)}`)
-      .then(node => setCats2(mapCatNodes(node?.children)))
-      .catch(() => setCats2([]))
-    setCats3([])
-    setSel2('')
-    setForm(f => ({ ...f, category_id: '' }))
+      .then(node => {
+        const children = mapCatNodes(node?.children)
+        setCats2(children)
+        setCats3([])
+        setSel2('')
+        // 하위 없는 1뎁스(사전예약·밸류업 등): 대분류 ID를 leaf category_id로 사용
+        setForm(f => ({ ...f, category_id: children.length === 0 ? sel1 : '' }))
+      })
+      .catch(() => {
+        setCats2([])
+        setCats3([])
+        setSel2('')
+        setForm(f => ({ ...f, category_id: sel1 }))
+      })
   }, [sel1])
 
   // ── 소분류 로드 ───────────────────────────
@@ -327,8 +399,12 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         try {
           if (cid1) {
             const n1 = await publicGet<CatNode>(`/categories/${encodeURIComponent(cid1)}`)
-            setCats2(mapCatNodes(n1?.children))
+            const sub1 = mapCatNodes(n1?.children)
+            setCats2(sub1)
             setSel1(cid1)
+            if (!cid2 && leafId === cid1) {
+              setForm(f => ({ ...f, category_id: cid1 }))
+            }
           }
           if (cid2) {
             const n2 = await publicGet<CatNode>(`/categories/${encodeURIComponent(cid2)}`)
@@ -375,11 +451,18 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           sc_minimum: product.sc_minimum != null ? String(product.sc_minimum) : '',
           sc_condition,
           sc_qty: product.sc_qty != null ? String(product.sc_qty) : '1',
-          delivery_days: String(product.delivery_days ?? 3),
+          delivery_days: String(product.delivery_days ?? 2),
           return_fee: String(product.return_fee ?? 0),
           exchange_fee: String(product.exchange_fee ?? 0),
           delivery_co: String(product.delivery_company ?? product.delivery_co ?? ''),
         })
+
+        if (Boolean(product.is_option) && productId) {
+          const drafts = await loadLegacyOptionDrafts(productId)
+          if (!cancelled) setOptions(drafts)
+        } else if (!cancelled) {
+          setOptions([])
+        }
       } catch (e: unknown) {
         toast(e instanceof Error ? e.message : '상품 정보를 불러올 수 없습니다.', 'error')
       } finally {
@@ -430,7 +513,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         max_order_qty: form.max_order_qty.trim() ? parseInt(form.max_order_qty, 10) : null,
         sc_type:       shipping.sc_type,
         sc_price:      parseFloat(shipping.sc_price) || 0,
-        delivery_days: parseInt(shipping.delivery_days, 10) || 3,
+        delivery_days: parseInt(shipping.delivery_days, 10) || 2,
         sale_start_at: form.sale_start_at || null,
         sale_end_at:   form.sale_end_at   || null,
         tax_type:      parseInt(taxType, 10) || 0,
@@ -458,6 +541,9 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           delivery_days: payload.delivery_days,
         }
         await scmPatch<any>(`/scm/products/${productId}`, patchBody)
+        if (form.is_option && options.length > 0) {
+          await persistLegacyOptions(productId, options)
+        }
         toast('저장되었습니다. (재심사 대기)', 'success')
         router.refresh()
       }
@@ -570,7 +656,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
                 카테고리
                 <Typography component='span' sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
                 <Typography component='span' variant='caption' color='text.secondary' sx={{ ml: 1 }}>
-                  (3단까지 선택 권장)
+                  (하위가 없으면 대분류만 선택 — 사전예약·밸류업 등)
                 </Typography>
               </Typography>
               <Grid container spacing={1}>
@@ -585,28 +671,40 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
                   </FormControl>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <FormControl fullWidth size='small' disabled={!sel1}>
+                  <FormControl fullWidth size='small' disabled={!sel1 || (cats2.length === 0 && Boolean(sel1))}>
                     <InputLabel>중분류</InputLabel>
-                    <Select label='중분류' value={sel2}
+                    <Select label='중분류' value={cats2.length === 0 && sel1 ? sel1 : sel2}
                       onChange={e => setSel2(e.target.value)}>
-                      <MenuItem value=''><em>선택</em></MenuItem>
+                      <MenuItem value=''><em>{cats2.length === 0 && sel1 ? '(하위 없음 — 대분류 적용)' : '선택'}</em></MenuItem>
+                      {cats2.length === 0 && sel1 ? (
+                        <MenuItem value={sel1}>
+                          {cats1.find(c => c.id === sel1)?.category_name ?? '대분류'}
+                        </MenuItem>
+                      ) : null}
                       {cats2.map(c => <MenuItem key={c.id} value={c.id}>{c.category_name}</MenuItem>)}
                     </Select>
                   </FormControl>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <FormControl fullWidth size='small' disabled={!sel2}>
+                  <FormControl fullWidth size='small' disabled={!sel2 || (cats2.length === 0 && Boolean(sel1))}>
                     <InputLabel>소분류</InputLabel>
                     <Select
                       label='소분류'
                       value={
-                        cats3.length === 0 && sel2 && form.category_id === sel2
-                          ? sel2
-                          : form.category_id
+                        cats2.length === 0 && sel1 && form.category_id === sel1
+                          ? sel1
+                          : cats3.length === 0 && sel2 && form.category_id === sel2
+                            ? sel2
+                            : form.category_id
                       }
                       onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))}
                     >
-                      <MenuItem value=''><em>{cats3.length === 0 && sel2 ? '(소분류 없음 — 중분류 적용)' : '선택'}</em></MenuItem>
+                      <MenuItem value=''><em>{cats2.length === 0 && sel1 ? '(대분류 적용)' : cats3.length === 0 && sel2 ? '(소분류 없음 — 중분류 적용)' : '선택'}</em></MenuItem>
+                      {cats2.length === 0 && sel1 ? (
+                        <MenuItem value={sel1}>
+                          {cats1.find(c => c.id === sel1)?.category_name ?? '대분류'}
+                        </MenuItem>
+                      ) : null}
                       {cats3.length === 0 && sel2 ? (
                         <MenuItem value={sel2}>
                           {cats2.find(c => c.id === sel2)?.category_name ?? '중분류'}

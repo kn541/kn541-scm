@@ -11,7 +11,25 @@ function authHeaders() {
 export interface OptionValue { id: string; group_id: string; value_name: string; sort_order: number; is_active: boolean }
 export interface OptionGroup { id: string; product_id: string; group_name: string; sort_order: number; values: OptionValue[] }
 export interface OptionCombination { id: string; product_id: string; option_name: string; option_group: string; value1_id: string | null; value2_id: string | null; add_price: string; stock_qty: number; is_active: boolean; sort_order: number }
-export interface OptionGroupsData { groups: OptionGroup[]; combinations: OptionCombination[]; total_groups: number; total_combinations: number }
+export interface LegacyOption {
+  id: string
+  product_id?: string
+  option_name: string
+  option_group?: string | null
+  add_price?: string | number
+  stock_qty?: number
+  sort_order?: number
+  is_active?: boolean
+}
+export interface OptionGroupsData {
+  option_mode?: string
+  groups: OptionGroup[]
+  combinations: OptionCombination[]
+  legacy_options?: LegacyOption[]
+  total_groups: number
+  total_combinations: number
+  total_legacy?: number
+}
 
 export async function fetchOptionGroups(productId: string): Promise<OptionGroupsData | null> {
   try { const res = await fetch(`${BASE}/products/${productId}/option-groups`, { headers: authHeaders() }); if (!res.ok) return null; return (await res.json()).data ?? null } catch { return null }
