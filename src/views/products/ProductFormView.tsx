@@ -261,6 +261,10 @@ type Props = { mode?: 'create' | 'edit'; productId?: string }
 // ─────────────────────────────────────────
 export default function ProductFormView({ mode = 'create', productId }: Props) {
   const router = useRouter()
+  const [draftProductId, setDraftProductId] = useState<string | null>(null)
+  const [optionDraftSaving, setOptionDraftSaving] = useState(false)
+  const resolvedProductId = productId ?? draftProductId
+  const effectiveMode: 'create' | 'edit' = mode === 'edit' || draftProductId ? 'edit' : 'create'
 
   // ── 폼 상태 ─────────────────────────────
   const [form,     setForm]     = useState<FormState>(EMPTY_FORM)
@@ -457,12 +461,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           delivery_co: String(product.delivery_company ?? product.delivery_co ?? ''),
         })
 
-        if (Boolean(product.is_option) && productId) {
-          const drafts = await loadLegacyOptionDrafts(productId)
-          if (!cancelled) setOptions(drafts)
-        } else if (!cancelled) {
-          setOptions([])
-        }
+        if (!cancelled) setOptions([])
       } catch (e: unknown) {
         toast(e instanceof Error ? e.message : '상품 정보를 불러올 수 없습니다.', 'error')
       } finally {
@@ -480,6 +479,75 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const saleN   = parseFloat(form.sale_price)   || 0
   const profit  = saleN - supplyN
 
+  const buildScmPayload = useCallback((): Record<string, unknown> => {
+    const descHtml = isRichHtmlEmpty(form.description) ? null : form.description
+    const mobileHtml = isRichHtmlEmpty(form.mobile_description) ? null : form.mobile_description
+    return {
+      product_name: form.product_name.trim(),
+      brand: form.brand.trim() || null,
+      category_id: form.category_id || null,
+      supplier_product_code: form.supplier_product_code.trim() || null,
+      summary: form.summary.trim() || null,
+      description: descHtml,
+      mobile_description: mobileHtml,
+      thumbnail_url: thumbnailUrls[0]?.trim() || null,
+      detail_images: detailUrls.filter(u => u.trim()),
+      supply_price: supplyN,
+      sale_price: saleN > 0 ? saleN : 1,
+      stock_qty: parseInt(form.stock_qty, 10) || 0,
+      min_order_qty: parseInt(form.min_order_qty, 10) || 1,
+      max_order_qty: form.max_order_qty.trim() ? parseInt(form.max_order_qty, 10) : null,
+      sc_type: shipping.sc_type,
+      sc_price: parseFloat(shipping.sc_price) || 0,
+      delivery_days: parseInt(shipping.delivery_days, 10) || 2,
+      sale_start_at: form.sale_start_at || null,
+      sale_end_at: form.sale_end_at || null,
+      tax_type: parseInt(taxType, 10) || 0,
+      is_option: form.is_option,
+    }
+  }, [form, supplyN, saleN, shipping, thumbnailUrls, detailUrls, taxType])
+
+  const createDraftForOptions = useCallback(async (): Promise<string | null> => {
+    try {
+      const data = await scmPost<{ product_id?: string }>('/scm/products', {
+        ...buildScmPayload(),
+        product_name: form.product_name.trim() || '(임시) 옵션 상품',
+        is_option: true,
+      })
+      const id = data?.product_id ? String(data.product_id) : null
+      if (!id) {
+        toast('임시 저장에 실패했습니다.', 'error')
+        return null
+      }
+      return id
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : '임시 저장에 실패했습니다.', 'error')
+      return null
+    }
+  }, [buildScmPayload, form.product_name, toast])
+
+  const handleIsOptionChange = useCallback(async (checked: boolean) => {
+    if (!checked) {
+      setForm(f => ({ ...f, is_option: false }))
+      return
+    }
+    if (resolvedProductId) {
+      setForm(f => ({ ...f, is_option: true }))
+      return
+    }
+    setOptionDraftSaving(true)
+    try {
+      const id = await createDraftForOptions()
+      if (!id) return
+      setDraftProductId(id)
+      setForm(f => ({ ...f, is_option: true }))
+      toast('옵션 설정을 위해 상품이 임시 저장되었습니다.', 'success')
+      router.replace(`/products/${id}/edit`)
+    } finally {
+      setOptionDraftSaving(false)
+    }
+  }, [resolvedProductId, createDraftForOptions, toast, router])
+
   // ── 제출 ─────────────────────────────────
   const handleSubmit = async () => {
     if (isApprovedLocked) {
@@ -493,37 +561,14 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
 
     setSaving(true)
     try {
-      const descHtml = isRichHtmlEmpty(form.description) ? null : form.description
-      const mobileHtml = isRichHtmlEmpty(form.mobile_description) ? null : form.mobile_description
+      const payload = buildScmPayload()
+      const pid = resolvedProductId
 
-      const payload: Record<string, any> = {
-        product_name:  form.product_name.trim(),
-        brand:         form.brand.trim() || null,
-        category_id:   form.category_id || null,
-        supplier_product_code: form.supplier_product_code.trim() || null,
-        summary:       form.summary.trim() || null,
-        description:   descHtml,
-        mobile_description: mobileHtml,
-        thumbnail_url: thumbnailUrls[0]?.trim() || null,
-        detail_images: detailUrls.filter(u => u.trim()),
-        supply_price:  supplyN,
-        sale_price:    saleN,
-        stock_qty:     parseInt(form.stock_qty, 10) || 0,
-        min_order_qty: parseInt(form.min_order_qty, 10) || 1,
-        max_order_qty: form.max_order_qty.trim() ? parseInt(form.max_order_qty, 10) : null,
-        sc_type:       shipping.sc_type,
-        sc_price:      parseFloat(shipping.sc_price) || 0,
-        delivery_days: parseInt(shipping.delivery_days, 10) || 2,
-        sale_start_at: form.sale_start_at || null,
-        sale_end_at:   form.sale_end_at   || null,
-        tax_type:      parseInt(taxType, 10) || 0,
-      }
-
-      if (mode === 'create') {
-        const res = await scmPost<any>('/scm/products', payload)
-        toast(`등록 완료! (승인 대기)`, 'success')
+      if (effectiveMode === 'create' && !pid) {
+        await scmPost<unknown>('/scm/products', payload)
+        toast('등록 완료! (승인 대기)', 'success')
         setTimeout(() => router.push('/products'), 1500)
-      } else if (productId) {
+      } else if (pid) {
         const patchBody = {
           product_name: payload.product_name,
           supplier_product_code: payload.supplier_product_code,
@@ -539,11 +584,9 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           max_order_qty: payload.max_order_qty,
           sc_price: payload.sc_price,
           delivery_days: payload.delivery_days,
+          is_option: form.is_option,
         }
-        await scmPatch<any>(`/scm/products/${productId}`, patchBody)
-        if (form.is_option && options.length > 0) {
-          await persistLegacyOptions(productId, options)
-        }
+        await scmPatch<unknown>(`/scm/products/${pid}`, patchBody)
         toast('저장되었습니다. (재심사 대기)', 'success')
         router.refresh()
       }
@@ -575,7 +618,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box>
             <Typography variant='h5' fontWeight={700}>
-              {mode === 'create' ? '상품 등록' : '상품 수정'}
+              {effectiveMode === 'create' ? '상품 등록' : '상품 수정'}
             </Typography>
             <Typography variant='caption' color='text.secondary'>
               일반상품 · 공급사 자동 지정 ({supplierName}) · 등록 후 관리자 승인 필요
@@ -847,54 +890,29 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         <Box>
           <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>⑦ 옵션</Typography>
           <FormControlLabel
-            control={<Switch checked={form.is_option}
-              onChange={e => setForm(f => ({ ...f, is_option: e.target.checked }))} />}
-            label='옵션 사용' />
-          {form.is_option && productId && (
+            control={
+              <Switch
+                checked={form.is_option}
+                disabled={optionDraftSaving || isApprovedLocked}
+                onChange={e => void handleIsOptionChange(e.target.checked)}
+              />
+            }
+            label={optionDraftSaving ? '옵션 사용 (임시 저장 중…)' : '옵션 사용'}
+          />
+          {form.is_option && resolvedProductId && (
             <Box sx={{ mt: 2, mb: 1, p: 2, border: '1px dashed', borderColor: 'primary.main', borderRadius: 2 }}>
               <Typography variant='body2' color='primary.main' sx={{ mb: 1, fontWeight: 600 }}>
                 2단 조합 옵션
               </Typography>
-              <OptionGroupSection
-                productId={productId}
-                onNotify={(message, severity) => toast(message, severity)}
-              />
+              <OptionGroupSection productId={resolvedProductId} disabled={isApprovedLocked} />
             </Box>
           )}
-          {form.is_option && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
-              {options.map(d => (
-                <Grid container spacing={1} key={d.key} alignItems='center'>
-                  <Grid size={{ xs: 12, sm: 4 }}>
-                    <CustomTextField fullWidth size='small' label='옵션명'
-                      value={d.option_name}
-                      onChange={e => setOptions(prev =>
-                        prev.map(x => x.key === d.key ? { ...x, option_name: e.target.value } : x))} />
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
-                    <CustomTextField fullWidth size='small' label='추가금액' type='number'
-                      value={d.add_price}
-                      onChange={e => setOptions(prev =>
-                        prev.map(x => x.key === d.key ? { ...x, add_price: e.target.value } : x))} />
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
-                    <CustomTextField fullWidth size='small' label='재고' type='number'
-                      value={d.stock_qty}
-                      onChange={e => setOptions(prev =>
-                        prev.map(x => x.key === d.key ? { ...x, stock_qty: e.target.value } : x))} />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 2 }}>
-                    <IconButton size='small'
-                      onClick={() => setOptions(prev => prev.filter(x => x.key !== d.key))}>
-                      <i className='tabler-x' />
-                    </IconButton>
-                  </Grid>
-                </Grid>
-              ))}
-              <Button size='small' variant='outlined'
-                onClick={() => setOptions(prev => [
-                  ...prev, { key: newKey(), option_name: '', add_price: '0', stock_qty: '0' }
-                ])}>+ 옵션 행 추가</Button>
+          {form.is_option && !resolvedProductId && optionDraftSaving && (
+            <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={18} />
+              <Typography variant='caption' color='text.secondary'>
+                옵션 설정을 위해 상품을 임시 저장하는 중…
+              </Typography>
             </Box>
           )}
         </Box>
@@ -996,7 +1014,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
             disabled={saving || isApprovedLocked}
             startIcon={saving ? <CircularProgress size={16} color='inherit' /> : undefined}
           >
-            {mode === 'create' ? '등록하기' : isApprovedLocked ? '승인완료 — 수정 불가' : '저장하기'}
+            {effectiveMode === 'create' ? '등록하기' : isApprovedLocked ? '승인완료 — 수정 불가' : '저장하기'}
           </Button>
         </Box>
 
