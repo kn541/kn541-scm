@@ -542,11 +542,15 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
       setDraftProductId(id)
       setForm(f => ({ ...f, is_option: true }))
       toast('옵션 설정을 위해 상품이 임시 저장되었습니다.', 'success')
-      router.replace(`/products/${id}/edit`)
+      // SCM-18 fix: router.replace() → history.replaceState()
+      // router.replace()는 페이지를 리마운트시켜 sel1/sel2가 ''로 초기화되고
+      // useEffect([sel1])이 category_id를 ''로 리셋하는 레이스 컨디션 발생
+      // history.replaceState()는 URL만 변경하고 React 상태를 유지
+      window.history.replaceState(null, '', `/products/${id}/edit`)
     } finally {
       setOptionDraftSaving(false)
     }
-  }, [resolvedProductId, createDraftForOptions, toast, router])
+  }, [resolvedProductId, createDraftForOptions, toast])
 
   // ── 제출 ─────────────────────────────────
   const handleSubmit = async () => {
