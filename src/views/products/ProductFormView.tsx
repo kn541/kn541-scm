@@ -10,6 +10,10 @@
  *  - KMC 동기화 / 옵션 / 속성 / 상품정보고시 섹션 제거
  *  - ImageUploader / RichEditor — 어드민 ProductForm과 동일
  *  - CategorySelect → API 기반 3단 직접 구현
+ *
+ * 2026-05-28 fix(SCM-18): 카테고리 리셋 방지
+ *  - useEffect([sel1]) / useEffect([sel2]) 비동기 콜백에 cancelled 플래그 추가
+ *  - stale API 응답이 도착해도 이미 변경된 state를 덮어쓰지 않음
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -309,19 +313,23 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
 
   // ── 대분류 로드 (GET /categories — 루트 노드 전체, 1뎁스·사전예약·밸류업 포함) ─────
   useEffect(() => {
+    let cancelled = false
     void publicGet<{ items?: Array<CatNode & { depth?: number }> }>('/categories')
       .then(d => {
+        if (cancelled) return
         const items = d?.items ?? []
         setCats1(mapCatNodes(items))
       })
-      .catch(() => setCats1([]))
+      .catch(() => { if (!cancelled) setCats1([]) })
 
     const uname = typeof window !== 'undefined' ? localStorage.getItem('username') : ''
     const uid = typeof window !== 'undefined' ? localStorage.getItem('user_id') : ''
     setSupplierName(uname ?? uid ?? '본인')
+    return () => { cancelled = true }
   }, [])
 
   // ── 중분류 로드 (GET /categories/{id} → children) ──
+  // ★ SCM-18 fix: cancelled 플래그로 stale API 응답 무시
   useEffect(() => {
     if (!sel1) {
       setCats2([])
@@ -333,8 +341,10 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
       return
     }
     if (categoryInitRef.current) return
+    let cancelled = false
     void publicGet<CatNode>(`/categories/${encodeURIComponent(sel1)}`)
       .then(node => {
+        if (cancelled) return
         const children = mapCatNodes(node?.children)
         setCats2(children)
         setCats3([])
@@ -343,14 +353,17 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         setForm(f => ({ ...f, category_id: children.length === 0 ? sel1 : '' }))
       })
       .catch(() => {
+        if (cancelled) return
         setCats2([])
         setCats3([])
         setSel2('')
         setForm(f => ({ ...f, category_id: sel1 }))
       })
+    return () => { cancelled = true }
   }, [sel1])
 
   // ── 소분류 로드 ───────────────────────────
+  // ★ SCM-18 fix: cancelled 플래그로 stale API 응답 무시
   useEffect(() => {
     if (!sel2) {
       setCats3([])
@@ -360,14 +373,17 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
       return
     }
     if (categoryInitRef.current) return
+    let cancelled = false
     void publicGet<CatNode>(`/categories/${encodeURIComponent(sel2)}`)
       .then(node => {
+        if (cancelled) return
         const items = mapCatNodes(node?.children)
         setCats3(items)
         if (items.length === 0) setForm(f => ({ ...f, category_id: sel2 }))
         else setForm(f => ({ ...f, category_id: '' }))
       })
-      .catch(() => setCats3([]))
+      .catch(() => { if (!cancelled) setCats3([]) })
+    return () => { cancelled = true }
   }, [sel2])
 
   // ── edit 모드 데이터 로드 ─────────────────
@@ -543,9 +559,6 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
       setForm(f => ({ ...f, is_option: true }))
       toast('옵션 설정을 위해 상품이 임시 저장되었습니다.', 'success')
       // SCM-18 fix: router.replace() → history.replaceState()
-      // router.replace()는 페이지를 리마운트시켜 sel1/sel2가 ''로 초기화되고
-      // useEffect([sel1])이 category_id를 ''로 리셋하는 레이스 컨디션 발생
-      // history.replaceState()는 URL만 변경하고 React 상태를 유지
       window.history.replaceState(null, '', `/products/${id}/edit`)
     } finally {
       setOptionDraftSaving(false)
@@ -638,7 +651,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
 
         <Divider />
 
-        {/* ① 공급사 자동지정 안내 (어드민의 ② 기본정보 상단 역할) */}
+        {/* ① 공급사 자동지정 안내 */}
         <Box
           sx={{
             display: 'flex',
