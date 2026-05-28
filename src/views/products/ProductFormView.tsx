@@ -2,11 +2,11 @@
 /**
  * KN541 SCM 상품 등록·수정 폼
  *
- * 2026-05-28 fix(SCM-18):
- *  - AuthGuard 수정으로 리마운트 근본 해결 → cancelled 플래그 불필요, 제거
- *  - patchBody에 category_id 추가 (edit/draft 모드)
- *  - resolvedCategoryId 폴백: form.category_id → sel2 → sel1
- *  - handleIsOptionChange: router.replace → history.replaceState
+ * 2026-05-28 refactor: 인라인 카테고리 3단 → CategorySelect 모듈로 교체
+ *   - sel1/sel2/cats1/cats2/cats3 + useEffect 3개 제거
+ *   - CategorySelect 1개로 통합 (어드민과 동일 모듈)
+ *   - patchBody에 category_id 포함
+ *   - handleIsOptionChange: history.replaceState 유지
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -20,19 +20,16 @@ import MenuItem from '@mui/material/MenuItem'
 import Switch from '@mui/material/Switch'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Grid from '@mui/material/Grid'
-import IconButton from '@mui/material/IconButton'
 import CircularProgress from '@mui/material/CircularProgress'
 import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
 import Chip from '@mui/material/Chip'
-import Select from '@mui/material/Select'
-import InputLabel from '@mui/material/InputLabel'
-import FormControl from '@mui/material/FormControl'
 import Collapse from '@mui/material/Collapse'
 
 import CustomTextField from '@core/components/mui/TextField'
 import ImageUploader from '@/components/upload/ImageUploader'
 import RichEditor, { isRichHtmlEmpty } from '@/components/editor/RichEditor'
+import CategorySelect from '@/components/CategorySelect'
 import { scmGet, scmPost, scmPatch, publicGet } from '@/lib/scmApi'
 import { updateOption, type LegacyOption } from '@/hooks/useOptionGroups'
 import { useSystemCodes } from '@/hooks/useSystemCodes'
@@ -43,11 +40,6 @@ import OptionGroupSection from './sections/OptionGroupSection'
 import type { ShippingState as ShippingPolicyValue } from './sections/productFormTypes'
 
 type ScType = 1 | 2 | 3 | 4
-interface Category { id: string; category_name: string; parent_id: string | null; depth: number }
-interface CatNode { id: string; category_name: string; children?: CatNode[] }
-
-const mapCatNodes = (nodes: CatNode[] | undefined): Category[] =>
-  (nodes ?? []).map(c => ({ id: c.id, category_name: c.category_name, parent_id: null, depth: 0 }))
 
 const toPriceStr = (v: unknown) => String(Number(v) || 0)
 
@@ -75,21 +67,6 @@ function mapLegacyToDrafts(rows: LegacyOption[]): OptionDraft[] {
     option_group: o.option_group != null ? String(o.option_group) : undefined,
     add_price: String(o.add_price ?? 0), stock_qty: String(o.stock_qty ?? 0),
   }))
-}
-
-async function loadLegacyOptionDrafts(productId: string): Promise<OptionDraft[]> {
-  try {
-    const data = await scmGet<OptionGroupsLoad>(`/products/${encodeURIComponent(productId)}/option-groups`)
-    const legacy = data?.legacy_options ?? []
-    if (legacy.length > 0) return mapLegacyToDrafts(legacy)
-  } catch { /* fallback */ }
-  try {
-    const optData = await scmGet<{ items?: LegacyOption[] }>(`/products/${encodeURIComponent(productId)}/options`)
-    const items = (optData?.items ?? []).filter(
-      o => (o as any).value1_id == null && (o as any).value2_id == null
-    )
-    return mapLegacyToDrafts(items)
-  } catch { return [] }
 }
 
 async function persistLegacyOptions(productId: string, drafts: OptionDraft[]) {
@@ -158,16 +135,12 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const [mobileDescriptionOpen, setMobileDescriptionOpen] = useState(false)
   const [productCode, setProductCode] = useState('')
   const [approvalStatus, setApprovalStatus] = useState('PENDING')
-  const categoryInitRef = useRef(false)
   const isApprovedLocked = mode === 'edit' && approvalStatus === 'APPROVED'
 
-  const [cats1, setCats1] = useState<Category[]>([])
-  const [cats2, setCats2] = useState<Category[]>([])
-  const [cats3, setCats3] = useState<Category[]>([])
-  const [sel1, setSel1] = useState('')
-  const [sel2, setSel2] = useState('')
-  const [taxType, setTaxType] = useState('0')
+  // ── 카테고리: CategorySelect 모듈 사용 ─────
+  const [categoryPath, setCategoryPath] = useState<string[]>([])
 
+  const [taxType, setTaxType] = useState('0')
   const { codes: taxCodes } = useSystemCodes(['tax_type'])
   const taxTypeOptions = (taxCodes['tax_type'] ?? []).map(c => ({
     value: c.code_value || c.code, label: c.code_name,
@@ -183,54 +156,12 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const toast = useCallback((msg: string, sev: 'success' | 'error' = 'success') =>
     setSnack({ open: true, msg, sev }), [])
 
-  // ── 대분류 로드 ─────────────────────────
+  // ── 공급사 이름 로드 ─────────────────────
   useEffect(() => {
-    void publicGet<{ items?: Array<CatNode & { depth?: number }> }>('/categories')
-      .then(d => setCats1(mapCatNodes(d?.items ?? [])))
-      .catch(() => setCats1([]))
-
     const uname = typeof window !== 'undefined' ? localStorage.getItem('username') : ''
     const uid = typeof window !== 'undefined' ? localStorage.getItem('user_id') : ''
     setSupplierName(uname ?? uid ?? '본인')
   }, [])
-
-  // ── 중분류 로드 ─────────────────────────
-  useEffect(() => {
-    if (!sel1) {
-      setCats2([]); setCats3([]); setSel2('')
-      if (!categoryInitRef.current) setForm(f => ({ ...f, category_id: '' }))
-      return
-    }
-    if (categoryInitRef.current) return
-    void publicGet<CatNode>(`/categories/${encodeURIComponent(sel1)}`)
-      .then(node => {
-        const children = mapCatNodes(node?.children)
-        setCats2(children); setCats3([]); setSel2('')
-        setForm(f => ({ ...f, category_id: children.length === 0 ? sel1 : '' }))
-      })
-      .catch(() => {
-        setCats2([]); setCats3([]); setSel2('')
-        setForm(f => ({ ...f, category_id: sel1 }))
-      })
-  }, [sel1])
-
-  // ── 소분류 로드 ─────────────────────────
-  useEffect(() => {
-    if (!sel2) {
-      setCats3([])
-      if (!sel1 && !categoryInitRef.current) setForm(f => ({ ...f, category_id: '' }))
-      return
-    }
-    if (categoryInitRef.current) return
-    void publicGet<CatNode>(`/categories/${encodeURIComponent(sel2)}`)
-      .then(node => {
-        const items = mapCatNodes(node?.children)
-        setCats3(items)
-        if (items.length === 0) setForm(f => ({ ...f, category_id: sel2 }))
-        else setForm(f => ({ ...f, category_id: '' }))
-      })
-      .catch(() => setCats3([]))
-  }, [sel2])
 
   // ── edit 모드 데이터 로드 ─────────────────
   useEffect(() => {
@@ -247,25 +178,21 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         setProductCode(String(product.product_code ?? ''))
         setTaxType(String(product.tax_type ?? '0'))
         setApprovalStatus(String(product.approval_status ?? 'PENDING'))
-        const cid1 = product.category_id_1 ? String(product.category_id_1) : ''
-        const cid2 = product.category_id_2 ? String(product.category_id_2) : ''
+
+        // ★ 카테고리: CategorySelect initialPath 용 체인 구성
+        const catPath = [
+          product.category_id_1,
+          product.category_id_2,
+          product.category_id,
+        ].filter((id): id is string => Boolean(id))
+        setCategoryPath(catPath)
+
         const leafId = String(product.category_id ?? product.category_id_2 ?? product.category_id_1 ?? '')
-        categoryInitRef.current = true
-        try {
-          if (cid1) {
-            const n1 = await publicGet<CatNode>(`/categories/${encodeURIComponent(cid1)}`)
-            setCats2(mapCatNodes(n1?.children)); setSel1(cid1)
-            if (!cid2 && leafId === cid1) setForm(f => ({ ...f, category_id: cid1 }))
-          }
-          if (cid2) {
-            const n2 = await publicGet<CatNode>(`/categories/${encodeURIComponent(cid2)}`)
-            const sub = mapCatNodes(n2?.children); setCats3(sub); setSel2(cid2)
-            if (sub.length === 0 && leafId === cid2) setForm(f => ({ ...f, category_id: cid2 }))
-          }
-        } finally { categoryInitRef.current = false }
+
         setForm({
           product_name: String(product.product_name ?? ''), brand: String(product.brand ?? ''),
-          category_id: leafId, supplier_product_code: String(product.supplier_product_code ?? product.supplier_product_no ?? ''),
+          category_id: leafId,
+          supplier_product_code: String(product.supplier_product_code ?? product.supplier_product_no ?? ''),
           summary: String(product.summary ?? ''), description: String(product.description ?? ''),
           mobile_description: String(product.mobile_description ?? ''),
           supply_price: toPriceStr(product.supply_price ?? product.original_supply_price ?? 0),
@@ -301,14 +228,13 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const supplyN = parseFloat(form.supply_price) || 0
   const saleN = parseFloat(form.sale_price) || 0
   const profit = saleN - supplyN
-  const resolvedCategoryId = form.category_id || sel2 || sel1
 
   const buildScmPayload = useCallback((): Record<string, unknown> => {
     const descHtml = isRichHtmlEmpty(form.description) ? null : form.description
     const mobileHtml = isRichHtmlEmpty(form.mobile_description) ? null : form.mobile_description
     return {
       product_name: form.product_name.trim(), brand: form.brand.trim() || null,
-      category_id: resolvedCategoryId || null,
+      category_id: form.category_id || null,
       supplier_product_code: form.supplier_product_code.trim() || null,
       summary: form.summary.trim() || null, description: descHtml, mobile_description: mobileHtml,
       thumbnail_url: thumbnailUrls[0]?.trim() || null,
@@ -322,7 +248,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
       sale_start_at: form.sale_start_at || null, sale_end_at: form.sale_end_at || null,
       tax_type: parseInt(taxType, 10) || 0, is_option: form.is_option,
     }
-  }, [form, resolvedCategoryId, supplyN, saleN, shipping, thumbnailUrls, detailUrls, taxType])
+  }, [form, supplyN, saleN, shipping, thumbnailUrls, detailUrls, taxType])
 
   const createDraftForOptions = useCallback(async (): Promise<string | null> => {
     try {
@@ -356,7 +282,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
       toast('승인 완료(APPROVED) 상품은 공급사에서 수정할 수 없습니다.', 'error'); return
     }
     if (!form.product_name.trim()) { toast('상품명을 입력하세요.', 'error'); return }
-    if (!resolvedCategoryId) { toast('카테고리를 선택하세요.', 'error'); return }
+    if (!form.category_id) { toast('카테고리를 선택하세요.', 'error'); return }
     if (!saleN || saleN <= 0) { toast('판매가를 확인하세요.', 'error'); return }
     if (thumbnailUrls.length === 0) { toast('대표 이미지를 업로드해 주세요.', 'error'); return }
 
@@ -445,9 +371,11 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           </Alert>
         )}
 
+        {/* ② 기본정보 */}
         <Box>
           <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>② 기본정보</Typography>
           <Grid container spacing={2}>
+            {/* ★ CategorySelect 모듈 사용 — 인라인 250줄 → 10줄 */}
             <Grid size={12}>
               <Typography variant='body2' sx={{ mb: 0.5 }}>
                 카테고리<Typography component='span' sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
@@ -455,51 +383,16 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
                   (하위가 없으면 대분류만 선택 — 사전예약·밸류업 등)
                 </Typography>
               </Typography>
-              <Grid container spacing={1}>
-                <Grid size={{ xs: 12, sm: 4 }}>
-                  <FormControl fullWidth size='small'>
-                    <InputLabel>대분류</InputLabel>
-                    <Select label='대분류' value={sel1} onChange={e => setSel1(e.target.value)}>
-                      <MenuItem value=''><em>선택</em></MenuItem>
-                      {cats1.map(c => <MenuItem key={c.id} value={c.id}>{c.category_name}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
-                  <FormControl fullWidth size='small' disabled={!sel1 || (cats2.length === 0 && Boolean(sel1))}>
-                    <InputLabel>중분류</InputLabel>
-                    <Select label='중분류' value={cats2.length === 0 && sel1 ? sel1 : sel2}
-                      onChange={e => setSel2(e.target.value)}>
-                      <MenuItem value=''><em>{cats2.length === 0 && sel1 ? '(하위 없음 — 대분류 적용)' : '선택'}</em></MenuItem>
-                      {cats2.length === 0 && sel1 ? (
-                        <MenuItem value={sel1}>{cats1.find(c => c.id === sel1)?.category_name ?? '대분류'}</MenuItem>
-                      ) : null}
-                      {cats2.map(c => <MenuItem key={c.id} value={c.id}>{c.category_name}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
-                  <FormControl fullWidth size='small' disabled={!sel2 || (cats2.length === 0 && Boolean(sel1))}>
-                    <InputLabel>소분류</InputLabel>
-                    <Select label='소분류'
-                      value={
-                        cats2.length === 0 && sel1 && form.category_id === sel1 ? sel1
-                          : cats3.length === 0 && sel2 && form.category_id === sel2 ? sel2
-                            : form.category_id
-                      }
-                      onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))}>
-                      <MenuItem value=''><em>{cats2.length === 0 && sel1 ? '(대분류 적용)' : cats3.length === 0 && sel2 ? '(소분류 없음 — 중분류 적용)' : '선택'}</em></MenuItem>
-                      {cats2.length === 0 && sel1 ? (
-                        <MenuItem value={sel1}>{cats1.find(c => c.id === sel1)?.category_name ?? '대분류'}</MenuItem>
-                      ) : null}
-                      {cats3.length === 0 && sel2 ? (
-                        <MenuItem value={sel2}>{cats2.find(c => c.id === sel2)?.category_name ?? '중분류'}</MenuItem>
-                      ) : null}
-                      {cats3.map(c => <MenuItem key={c.id} value={c.id}>{c.category_name}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              </Grid>
+              <CategorySelect
+                value={form.category_id}
+                initialPath={categoryPath.length > 0 ? categoryPath : undefined}
+                onChange={(id) => setForm(f => ({ ...f, category_id: id }))}
+                allowAll={false}
+                size='small'
+                maxDepth={3}
+                labels={['대분류', '중분류', '소분류']}
+                disabled={isApprovedLocked}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <CustomTextField fullWidth size='small' label='브랜드 (선택)' value={form.brand}
@@ -526,6 +419,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         </Box>
         <Divider />
 
+        {/* ③ 가격정보 */}
         <Box>
           <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>③ 가격정보</Typography>
           <Grid container spacing={2}>
@@ -578,6 +472,7 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           onChange={next => setForm(f => ({ ...f, sale_start_at: next.sale_start_date, sale_end_at: next.sale_end_date }))} />
         <Divider />
 
+        {/* ⑦ 옵션 */}
         <Box>
           <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>⑦ 옵션</Typography>
           <FormControlLabel
