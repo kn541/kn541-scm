@@ -2,10 +2,11 @@
 /**
  * KN541 SCM 상품 등록·수정 폼
  *
- * 2026-05-28 fix(SCM-18): 카테고리 리셋 방지 + 저장 시 category_id 누락 수정
- *  - useEffect cancelled 플래그: stale API 응답 차단
- *  - patchBody에 category_id 추가
- *  - handleSubmit에서 category_id 폴백: sel2 → sel1 → form.category_id
+ * 2026-05-28 fix(SCM-18):
+ *  - AuthGuard 수정으로 리마운트 근본 해결 → cancelled 플래그 불필요, 제거
+ *  - patchBody에 category_id 추가 (edit/draft 모드)
+ *  - resolvedCategoryId 폴백: form.category_id → sel2 → sel1
+ *  - handleIsOptionChange: router.replace → history.replaceState
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -184,14 +185,13 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
 
   // ── 대분류 로드 ─────────────────────────
   useEffect(() => {
-    let cancelled = false
     void publicGet<{ items?: Array<CatNode & { depth?: number }> }>('/categories')
-      .then(d => { if (!cancelled) setCats1(mapCatNodes(d?.items ?? [])) })
-      .catch(() => { if (!cancelled) setCats1([]) })
+      .then(d => setCats1(mapCatNodes(d?.items ?? [])))
+      .catch(() => setCats1([]))
+
     const uname = typeof window !== 'undefined' ? localStorage.getItem('username') : ''
     const uid = typeof window !== 'undefined' ? localStorage.getItem('user_id') : ''
     setSupplierName(uname ?? uid ?? '본인')
-    return () => { cancelled = true }
   }, [])
 
   // ── 중분류 로드 ─────────────────────────
@@ -202,20 +202,16 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
       return
     }
     if (categoryInitRef.current) return
-    let cancelled = false
     void publicGet<CatNode>(`/categories/${encodeURIComponent(sel1)}`)
       .then(node => {
-        if (cancelled) return
         const children = mapCatNodes(node?.children)
         setCats2(children); setCats3([]); setSel2('')
         setForm(f => ({ ...f, category_id: children.length === 0 ? sel1 : '' }))
       })
       .catch(() => {
-        if (cancelled) return
         setCats2([]); setCats3([]); setSel2('')
         setForm(f => ({ ...f, category_id: sel1 }))
       })
-    return () => { cancelled = true }
   }, [sel1])
 
   // ── 소분류 로드 ─────────────────────────
@@ -226,17 +222,14 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
       return
     }
     if (categoryInitRef.current) return
-    let cancelled = false
     void publicGet<CatNode>(`/categories/${encodeURIComponent(sel2)}`)
       .then(node => {
-        if (cancelled) return
         const items = mapCatNodes(node?.children)
         setCats3(items)
         if (items.length === 0) setForm(f => ({ ...f, category_id: sel2 }))
         else setForm(f => ({ ...f, category_id: '' }))
       })
-      .catch(() => { if (!cancelled) setCats3([]) })
-    return () => { cancelled = true }
+      .catch(() => setCats3([]))
   }, [sel2])
 
   // ── edit 모드 데이터 로드 ─────────────────
@@ -308,8 +301,6 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
   const supplyN = parseFloat(form.supply_price) || 0
   const saleN = parseFloat(form.sale_price) || 0
   const profit = saleN - supplyN
-
-  // ★ 카테고리 ID 확정: form.category_id > sel2 > sel1 폴백
   const resolvedCategoryId = form.category_id || sel2 || sel1
 
   const buildScmPayload = useCallback((): Record<string, unknown> => {
@@ -360,13 +351,11 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
     } finally { setOptionDraftSaving(false) }
   }, [resolvedProductId, createDraftForOptions, toast])
 
-  // ── 제출 ─────────────────────────────────
   const handleSubmit = async () => {
     if (isApprovedLocked) {
       toast('승인 완료(APPROVED) 상품은 공급사에서 수정할 수 없습니다.', 'error'); return
     }
     if (!form.product_name.trim()) { toast('상품명을 입력하세요.', 'error'); return }
-    // ★ category_id 폴백 적용
     if (!resolvedCategoryId) { toast('카테고리를 선택하세요.', 'error'); return }
     if (!saleN || saleN <= 0) { toast('판매가를 확인하세요.', 'error'); return }
     if (thumbnailUrls.length === 0) { toast('대표 이미지를 업로드해 주세요.', 'error'); return }
@@ -381,7 +370,6 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         toast('등록 완료! (승인 대기)', 'success')
         setTimeout(() => router.push('/products'), 1500)
       } else if (pid) {
-        // ★ patchBody에 category_id 추가
         const patchBody = {
           product_name: payload.product_name,
           category_id: payload.category_id,
@@ -457,7 +445,6 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           </Alert>
         )}
 
-        {/* ② 기본정보 */}
         <Box>
           <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>② 기본정보</Typography>
           <Grid container spacing={2}>
@@ -539,7 +526,6 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
         </Box>
         <Divider />
 
-        {/* ③ 가격정보 */}
         <Box>
           <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>③ 가격정보</Typography>
           <Grid container spacing={2}>
@@ -592,7 +578,6 @@ export default function ProductFormView({ mode = 'create', productId }: Props) {
           onChange={next => setForm(f => ({ ...f, sale_start_at: next.sale_start_date, sale_end_at: next.sale_end_date }))} />
         <Divider />
 
-        {/* ⑦ 옵션 */}
         <Box>
           <Typography variant='subtitle2' sx={{ mb: 2, color: 'text.secondary' }}>⑦ 옵션</Typography>
           <FormControlLabel
