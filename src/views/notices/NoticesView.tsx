@@ -18,6 +18,7 @@ import AccordionSummary from '@mui/material/AccordionSummary'
 import AccordionDetails from '@mui/material/AccordionDetails'
 import Button from '@mui/material/Button'
 import { scmGet } from '@/lib/scmApi'
+import { sanitizeHtml } from '@/lib/sanitizeHtml'
 
 interface Notice {
   id: number
@@ -142,15 +143,11 @@ export default function NoticesView() {
                         <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
                           <CircularProgress size={24} />
                         </Box>
-                      ) : (cachedContent ?? '').includes('<') ? (
+                      ) : (
                         <Box
                           sx={{ '& img': { maxWidth: '100%' }, lineHeight: 1.8 }}
-                          dangerouslySetInnerHTML={{ __html: cachedContent ?? '' }}
+                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(cachedContent ?? '') }}
                         />
-                      ) : (
-                        <Typography variant='body2' sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
-                          {cachedContent ?? '로딩 중...'}
-                        </Typography>
                       )}
                     </AccordionDetails>
                   </Accordion>
