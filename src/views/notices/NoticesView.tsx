@@ -18,7 +18,7 @@ import AccordionSummary from '@mui/material/AccordionSummary'
 import AccordionDetails from '@mui/material/AccordionDetails'
 import Button from '@mui/material/Button'
 import { scmGet } from '@/lib/scmApi'
-import { sanitizeHtml } from '@/lib/sanitizeHtml'
+import { sanitizeLooseHtml } from '@/lib/sanitizeLooseHtml'
 
 interface Notice {
   id: number
@@ -146,7 +146,7 @@ export default function NoticesView() {
                       ) : (
                         <Box
                           sx={{ '& img': { maxWidth: '100%' }, lineHeight: 1.8 }}
-                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(cachedContent ?? '') }}
+                          dangerouslySetInnerHTML={{ __html: sanitizeLooseHtml(cachedContent ?? '') }}
                         />
                       )}
                     </AccordionDetails>
