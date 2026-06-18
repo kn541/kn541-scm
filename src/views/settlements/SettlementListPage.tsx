@@ -1,6 +1,7 @@
 'use client'
 /**
  * SCM 정산 현황 목록 — GET /scm/settlements
+ * 2026-06-18: SCM-22 연도+월 단위 조회로 변경
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
@@ -18,6 +19,7 @@ import { scmGet, fmtDate } from '@/lib/scmApi'
 
 const THIS_YEAR = new Date().getFullYear()
 const YEAR_OPTIONS = [THIS_YEAR - 1, THIS_YEAR, THIS_YEAR + 1]
+const MONTH_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 const PAGE_SIZE = 10
 
 const STATUS_CHIP: Record<string, { label: string; color: 'default' | 'info' | 'primary' | 'warning' | 'success' | 'error' }> = {
@@ -58,6 +60,7 @@ export default function SettlementListPage() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
   const [settleYear, setSettleYear] = useState<string>(String(THIS_YEAR))
+  const [settleMonth, setSettleMonth] = useState<string>('')
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -71,6 +74,7 @@ export default function SettlementListPage() {
         size: String(PAGE_SIZE),
       })
       if (settleYear !== '') qs.set('settle_year', settleYear)
+      if (settleMonth !== '') qs.set('settle_month', settleMonth)
       if (status) qs.set('status', status)
       const data = await scmGet<{ items: SettlementListRow[]; total: number }>(`/scm/settlements?${qs}`)
       setRows(data.items ?? [])
@@ -82,7 +86,7 @@ export default function SettlementListPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, settleYear, status])
+  }, [page, settleYear, settleMonth, status])
 
   useEffect(() => {
     void load()
@@ -90,6 +94,11 @@ export default function SettlementListPage() {
 
   const onFilterYear = (v: string) => {
     setSettleYear(v)
+    setPage(0)
+  }
+
+  const onFilterMonth = (v: string) => {
+    setSettleMonth(v)
     setPage(0)
   }
 
@@ -122,6 +131,14 @@ export default function SettlementListPage() {
             {YEAR_OPTIONS.map(yr => (
               <MenuItem key={yr} value={String(yr)}>
                 {yr}년
+              </MenuItem>
+            ))}
+          </CustomTextField>
+          <CustomTextField select size='small' label='월' value={settleMonth} onChange={e => onFilterMonth(e.target.value)} sx={{ minWidth: 100 }}>
+            <MenuItem value=''>전체</MenuItem>
+            {MONTH_OPTIONS.map(m => (
+              <MenuItem key={m} value={String(m)}>
+                {m}월
               </MenuItem>
             ))}
           </CustomTextField>
