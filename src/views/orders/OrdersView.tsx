@@ -5,6 +5,7 @@
  * POST /scm/orders/:id/ship      — 송장 등록
  * 2026-05-07: 배송상태 칩 / 송장번호 클릭 → SweetTracker TrackingModal 연동
  * 2026-06-18: SCM-20 검색필터 추가 (상품명/수령자명/전화번호)
+ * 2026-06-18: SCM-21 날짜 지정 버튼 추가 (오늘/7일/30일/90일/직접입력)
  */
 import { useState, useEffect, useCallback } from 'react'
 import Box from '@mui/material/Box'
@@ -12,6 +13,7 @@ import Card from '@mui/material/Card'
 import CardHeader from '@mui/material/CardHeader'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
+import ButtonGroup from '@mui/material/ButtonGroup'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
@@ -83,6 +85,19 @@ const SEARCH_TYPES = [
   { label: '전화번호', value: 'phone' },
 ]
 
+// 날짜 빠른선택 옵션
+const DATE_PRESETS = [
+  { label: '오늘',  days: 0 },
+  { label: '7일',   days: 7 },
+  { label: '30일',  days: 30 },
+  { label: '90일',  days: 90 },
+]
+
+/** YYYY-MM-DD 형식 반환 */
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
 export default function OrdersView() {
   const [rows,         setRows]         = useState<ScmOrder[]>([])
   const [total,        setTotal]        = useState(0)
@@ -92,6 +107,11 @@ export default function OrdersView() {
   const [keyword,      setKeyword]      = useState('')
   const [loading,      setLoading]      = useState(false)
   const [error,        setError]        = useState('')
+
+  // 날짜 필터
+  const [dateFrom,     setDateFrom]     = useState('')
+  const [dateTo,       setDateTo]       = useState('')
+  const [datePreset,   setDatePreset]   = useState<number | 'custom' | ''>('')
 
   // 송장 다이얼로그
   const [shipDialog, setShipDialog] = useState<{
@@ -106,25 +126,41 @@ export default function OrdersView() {
   const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' as 'success'|'error' })
   const toast = (msg: string, sev: 'success'|'error' = 'success') => setSnack({ open: true, msg, sev })
 
-  const load = useCallback(async (pg = 0, status = statusFilter, kw = keyword, sType = searchType) => {
+  const load = useCallback(async (
+    pg = 0, status = statusFilter, kw = keyword, sType = searchType,
+    df = dateFrom, dt = dateTo
+  ) => {
     setLoading(true); setError('')
     try {
       const qs = new URLSearchParams({ page: String(pg + 1), size: '20' })
       if (status)    qs.set('order_status', status)
       if (kw.trim()) { qs.set('keyword', kw.trim()); qs.set('search_type', sType) }
+      if (df)        qs.set('date_from', df)
+      if (dt)        qs.set('date_to', dt)
       const data = await scmGet<{ items: ScmOrder[]; total: number }>(`/scm/orders?${qs}`)
       setRows(data.items ?? []); setTotal(data.total ?? 0)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : '데이터를 불러올 수 없습니다.')
     } finally { setLoading(false) }
-  }, [statusFilter, keyword, searchType])
+  }, [statusFilter, keyword, searchType, dateFrom, dateTo])
 
   useEffect(() => { void load(0) }, [load])
 
-  const handleSearch = () => { setPage(0); void load(0, statusFilter, keyword, searchType) }
+  const handleSearch = () => { setPage(0); void load(0, statusFilter, keyword, searchType, dateFrom, dateTo) }
   const handleReset  = () => {
-    setKeyword(''); setStatusFilter(''); setSearchType(SEARCH_TYPES[0].value); setPage(0)
-    void load(0, '', '', SEARCH_TYPES[0].value)
+    setKeyword(''); setStatusFilter(''); setSearchType(SEARCH_TYPES[0].value)
+    setDateFrom(''); setDateTo(''); setDatePreset(''); setPage(0)
+    void load(0, '', '', SEARCH_TYPES[0].value, '', '')
+  }
+
+  const handleDatePreset = (days: number | 'custom') => {
+    setDatePreset(days)
+    if (days === 'custom') return
+    const today = new Date()
+    const to = toDateStr(today)
+    const from = days === 0 ? to : toDateStr(new Date(today.getTime() - days * 86400000))
+    setDateFrom(from); setDateTo(to); setPage(0)
+    void load(0, statusFilter, keyword, searchType, from, to)
   }
 
   const openShipDialog = (order: ScmOrder) => setShipDialog({
@@ -179,6 +215,8 @@ export default function OrdersView() {
                   order_status: statusFilter || undefined,
                   keyword: keyword.trim() || undefined,
                   search_type: searchType || undefined,
+                  date_from: dateFrom || undefined,
+                  date_to: dateTo || undefined,
                 }}
               />
               {loading
@@ -189,30 +227,61 @@ export default function OrdersView() {
         />
 
         {/* 필터 + 검색 */}
-        <Box sx={{ px: 3, py: 2, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
-          <CustomTextField select size='small' label='주문상태' value={statusFilter}
-            onChange={e => { setStatusFilter(e.target.value); setPage(0); void load(0, e.target.value, keyword, searchType) }}
-            sx={{ minWidth: 130 }}>
-            <MenuItem value=''>전체</MenuItem>
-            {Object.entries(ORDER_STATUS_MAP).map(([v, m]) => (
-              <MenuItem key={v} value={v}>{m.label}</MenuItem>
-            ))}
-          </CustomTextField>
-          <CustomTextField select size='small' value={searchType}
-            onChange={e => setSearchType(e.target.value)}
-            sx={{ minWidth: 110 }}>
-            {SEARCH_TYPES.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
-          </CustomTextField>
-          <CustomTextField size='small' placeholder='검색어 입력' value={keyword}
-            onChange={e => setKeyword(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            sx={{ flex: 1, maxWidth: 280 }} />
-          <Button variant='contained' size='small'
-            startIcon={<i className='tabler-search' />}
-            onClick={handleSearch}>검색</Button>
-          <Button variant='outlined' color='secondary' size='small'
-            startIcon={<i className='tabler-refresh' />}
-            onClick={handleReset}>초기화</Button>
+        <Box sx={{ px: 3, py: 2, display: 'flex', flexDirection: 'column', gap: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+          {/* 1행: 주문상태 + 검색 */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+            <CustomTextField select size='small' label='주문상태' value={statusFilter}
+              onChange={e => { setStatusFilter(e.target.value); setPage(0); void load(0, e.target.value, keyword, searchType, dateFrom, dateTo) }}
+              sx={{ minWidth: 130 }}>
+              <MenuItem value=''>전체</MenuItem>
+              {Object.entries(ORDER_STATUS_MAP).map(([v, m]) => (
+                <MenuItem key={v} value={v}>{m.label}</MenuItem>
+              ))}
+            </CustomTextField>
+            <CustomTextField select size='small' value={searchType}
+              onChange={e => setSearchType(e.target.value)}
+              sx={{ minWidth: 110 }}>
+              {SEARCH_TYPES.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+            </CustomTextField>
+            <CustomTextField size='small' placeholder='검색어 입력' value={keyword}
+              onChange={e => setKeyword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              sx={{ flex: 1, maxWidth: 280 }} />
+            <Button variant='contained' size='small'
+              startIcon={<i className='tabler-search' />}
+              onClick={handleSearch}>검색</Button>
+            <Button variant='outlined' color='secondary' size='small'
+              startIcon={<i className='tabler-refresh' />}
+              onClick={handleReset}>초기화</Button>
+          </Box>
+          {/* 2행: 날짜 빠른선택 */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+            <Typography variant='body2' color='text.secondary' sx={{ mr: 0.5 }}>주문일</Typography>
+            <ButtonGroup size='small' variant='outlined'>
+              {DATE_PRESETS.map(p => (
+                <Button key={p.days}
+                  variant={datePreset === p.days ? 'contained' : 'outlined'}
+                  onClick={() => handleDatePreset(p.days)}>{p.label}</Button>
+              ))}
+              <Button
+                variant={datePreset === 'custom' ? 'contained' : 'outlined'}
+                onClick={() => handleDatePreset('custom')}>직접입력</Button>
+            </ButtonGroup>
+            {datePreset === 'custom' && (
+              <>
+                <CustomTextField size='small' type='date' value={dateFrom}
+                  onChange={e => setDateFrom(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: 150 }} />
+                <Typography variant='body2' color='text.secondary'>~</Typography>
+                <CustomTextField size='small' type='date' value={dateTo}
+                  onChange={e => setDateTo(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: 150 }} />
+                <Button size='small' variant='contained' onClick={handleSearch}>적용</Button>
+              </>
+            )}
+          </Box>
         </Box>
 
         {error && <Alert severity='error' sx={{ mx: 3, my: 2 }}>{error}</Alert>}
