@@ -4,6 +4,7 @@
  * GET  /scm/orders               — 목록
  * POST /scm/orders/:id/ship      — 송장 등록
  * 2026-05-07: 배송상태 칩 / 송장번호 클릭 → SweetTracker TrackingModal 연동
+ * 2026-06-18: SCM-20 검색필터 추가 (상품명/수령자명/전화번호)
  */
 import { useState, useEffect, useCallback } from 'react'
 import Box from '@mui/material/Box'
@@ -77,6 +78,9 @@ const SEARCH_TYPES = [
   { label: '회원번호', value: 'member_no' },
   { label: '주문번호', value: 'order_no' },
   { label: '주문자명', value: 'member_name' },
+  { label: '상품명',   value: 'product_name' },
+  { label: '수령자명', value: 'recipient' },
+  { label: '전화번호', value: 'phone' },
 ]
 
 export default function OrdersView() {
@@ -199,7 +203,7 @@ export default function OrdersView() {
             sx={{ minWidth: 110 }}>
             {SEARCH_TYPES.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
           </CustomTextField>
-          <CustomTextField size='small' placeholder='회원번호 · 주문번호 · 주문자명' value={keyword}
+          <CustomTextField size='small' placeholder='검색어 입력' value={keyword}
             onChange={e => setKeyword(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
             sx={{ flex: 1, maxWidth: 280 }} />
